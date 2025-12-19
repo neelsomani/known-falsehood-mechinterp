@@ -1,3 +1,23 @@
-# Do Models Distinguish Known Falsehoods?
+# Do Models Encode Epistemic Stance in Reasoning?
 
-We investigate whether language models represent a distinction between a proposition's truth value and its epistemic status in context. Specifically, we ask whether internal activations differ between (i) presenting a false proposition as a claim ("X") and (ii) presenting the same proposition as explicitly negated ("The following is false: X"), even when the surface content of X is identical. We construct a controlled dataset of short factual statements in three classes—true, false, and declared-false—using minimal lexical edits and diverse stance templates to reduce format artifacts. We record residual stream activations at multiple token positions and layers, and train linear probes to discriminate false vs declared-false. To test whether any separable representation is causally involved in reasoning, we ablate the inferred "stance direction" (and/or top-weight neurons) and measure changes in both probe performance and downstream behavior: truth-judgments, consistency across multi-step chains, and whether the model draws consequences from X versus ¬X under declared-false framing. Our results provide evidence that LMs can encode epistemic stance separately from propositional content, and that manipulating this representation can selectively disrupt the model's ability to treat explicit negation as a constraint on reasoning.
+We investigate whether language models distinguish between a proposition's content and its conditional licensing as a premise under an explicit assumption. Specifically, we ask whether internal activations differ when the same proposition X is used as a premise for reasoning under different assumptions about X (e.g., explicitly declared true versus explicitly declared false), even when the surface content of X is held fixed.
+
+For example, consider the proposition X = "Paris is the capital of France." When presented with "It is true that: Paris is the capital of France," a model should reason from X and endorse consequences consistent with it. When presented with "It is false that: Paris is the capital of France," the model should instead reason from ¬X when reasoning under the stated assumption, despite the propositional content being identical in both cases. Importantly, the model is not asked to judge whether X is true in the real world, but to condition its downstream reasoning on how X is framed as an assumed premise. Correct behavior therefore requires tracking not just what X says, but how it is licensed for use as a premise.
+
+We construct a controlled dataset of short factual statements in four classes (declared-true vs. declared-false, X_true vs. X_false) using minimal lexical edits and diverse stance templates to reduce format artifacts. We record residual stream activations at multiple token positions and layers, and train linear probes to discriminate declared-true versus declared-false conditions while holding propositional content fixed. To test whether any separable representation is causally involved in reasoning, we ablate the inferred "stance direction" (and/or top-weight neurons) and measure changes in downstream, premise-conditioned behavior: forced-choice consequence selection, consistency across multi-step inference, and whether the model propagates X versus ¬X when X is explicitly marked as false.
+
+Our results provide evidence that language models encode epistemic stance as a separable, assumption-scoped internal signal that modulates how propositional content is used in downstream inference, and that manipulating this signal selectively disrupts the model's ability to treat explicit negation as a constraint on reasoning under assumed premises.
+
+## Quickstart: interactive Qwen-3 4B chat
+
+1) Install dependencies (Python 3.9+):
+   ```bash
+   pip install "torch>=2.1" "transformers>=4.41" accelerate
+   ```
+   *Optional*: `pip install hf-transfer` for faster local cache use.
+
+2) Run the interactive loop (uses the chat template described in `docs/AGENTS.md`):
+   ```bash
+   python scripts/qwen3_interactive.py --model Qwen/Qwen3-4B-Instruct-2507 --system "You are a helpful agent. Answer the user's prompt in 1 word."
+   ```
+   Type at the `You>` prompt; exit with `exit`/`quit`/Ctrl+C/Ctrl+D. Adjust `--temperature 0` for greedy generation or tweak `--max-new-tokens`, `--top-p`, and `--dtype` as needed.
