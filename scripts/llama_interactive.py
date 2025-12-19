@@ -1,8 +1,8 @@
 """
-Interactive terminal chat with Qwen-3 8B, matching the setup described in docs/AGENTS.md.
+Interactive terminal chat, matching the setup described in docs/AGENTS.md.
 
 Usage:
-  python scripts/qwen3_interactive.py --model Qwen/Qwen3-4B-Instruct-2507 --system "You are a helpful agent."
+  python scripts/llama_interactive.py --model meta-llama/Llama-3.1-70B-Instruct --system "You are a helpful agent."
 
 Type your prompt and press Enter. Type `exit` or `quit` (or hit Ctrl+D/Ctrl+C) to leave the session.
 """
@@ -16,10 +16,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Chat with Qwen-3 8B from the terminal.")
+    parser = argparse.ArgumentParser(description="Chat with Llama from the terminal.")
     parser.add_argument(
         "--model",
-        default="Qwen/Qwen3-4B-Instruct-2507",
+        default="meta-llama/Llama-3.1-70B-Instruct",
         help="Hugging Face model id. Use a chat-tuned variant if you have it locally.",
     )
     parser.add_argument(
@@ -67,7 +67,7 @@ def load_model(model_id: str, dtype: str):
 
 
 def build_prompt(tokenizer, messages: List[Dict[str, str]]) -> str:
-    # Qwen chat models expose a chat template; this keeps formatting consistent with the README flow.
+    # Llama chat models expose a chat template; this keeps formatting consistent with the README flow.
     return tokenizer.apply_chat_template(
         messages,
         tokenize=False,
@@ -113,7 +113,7 @@ def main() -> None:
 
         generated_tokens = outputs[0][inputs["input_ids"].shape[1]:]
         assistant_reply = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
-        print(f"Qwen3> {assistant_reply}", flush=True)
+        print(f"Llama> {assistant_reply}", flush=True)
 
         # Stateless: do not persist messages across turns.
 

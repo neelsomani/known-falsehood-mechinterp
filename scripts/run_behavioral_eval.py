@@ -226,7 +226,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run truth and consequence behavioral checks.")
     parser.add_argument(
         "--model",
-        default="Qwen/Qwen3-4B-Instruct-2507",
+        default="meta-llama/Llama-3.1-70B-Instruct",
         help="Hugging Face model id.",
     )
     parser.add_argument(

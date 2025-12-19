@@ -8,7 +8,7 @@ We construct a controlled dataset of short factual statements in four classes (d
 
 Our results provide evidence that language models encode epistemic stance as a separable, assumption-scoped internal signal that modulates how propositional content is used in downstream inference, and that manipulating this signal selectively disrupts the model's ability to treat explicit negation as a constraint on reasoning under assumed premises.
 
-## Quickstart: interactive Qwen-3 4B chat
+## Quickstart: interactive Llama 70B chat
 
 1) Install dependencies (Python 3.9+):
    ```bash
@@ -18,6 +18,6 @@ Our results provide evidence that language models encode epistemic stance as a s
 
 2) Run the interactive loop (uses the chat template described in `docs/AGENTS.md`):
    ```bash
-   python scripts/qwen3_interactive.py --model Qwen/Qwen3-4B-Instruct-2507 --system "You are a helpful agent. Answer the user's prompt in 1 word."
+   python scripts/llama_interactive.py --model meta-llama/Llama-3.1-70B-Instruct --system "You are a helpful agent. Answer the user's prompt in 1 character (A/B)."
    ```
    Type at the `You>` prompt; exit with `exit`/`quit`/Ctrl+C/Ctrl+D. Adjust `--temperature 0` for greedy generation or tweak `--max-new-tokens`, `--top-p`, and `--dtype` as needed.
