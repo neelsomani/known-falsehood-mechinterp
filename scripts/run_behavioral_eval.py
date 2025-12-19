@@ -99,7 +99,7 @@ def build_consequence_rows(
             if consequence_prompt:
                 consequence_prompt = consequence_prompt[0].lower() + consequence_prompt[1:]
             full_question = (
-                f"{row['statement']} According to the assumption above, {consequence_prompt}"
+                f"\"{row['statement']}\" According to the assumption above, {consequence_prompt}"
             )
             out.append(
                 {
