@@ -41,9 +41,9 @@ Our results provide evidence that language models encode epistemic stance as a s
 
 Capture residual stream activations at the entity/object token and final token:
    ```bash
-   python scripts/capture_activations.py --model meta-llama/Llama-3.1-70B-Instruct --split train
+   python scripts/capture_activations.py --model meta-llama/Llama-3.1-70B-Instruct
    ```
-   This writes `dataset/activations_train.pt` (or `activations_{split}.pt` for other splits). Use `--split test` or `--split all` as needed.
+   This writes `dataset/activations_train.pt` (or `activations_{split}.pt` for other splits). Use `--split train` or `--split test` as needed.
 
 ## Run probes
 

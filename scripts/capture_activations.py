@@ -93,7 +93,7 @@ def main() -> None:
     parser.add_argument("--model", default="meta-llama/Llama-3.1-70B-Instruct")
     parser.add_argument("--data", default="dataset/data.csv")
     parser.add_argument("--splits", default="dataset/splits.json")
-    parser.add_argument("--split", choices=["train", "test", "all"], default="train")
+    parser.add_argument("--split", choices=["train", "test", "all"], default="all")
     parser.add_argument("--system", default=None, help="Optional system prompt.")
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--dtype", default="bfloat16", choices=["float16", "bfloat16", "float32"])
