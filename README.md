@@ -21,3 +21,17 @@ Our results provide evidence that language models encode epistemic stance as a s
    python scripts/llama_interactive.py --model meta-llama/Llama-3.1-70B-Instruct
    ```
    Type at the `You>` prompt; exit with `exit`/`quit`/Ctrl+C/Ctrl+D. Adjust `--temperature 0` for greedy generation or tweak `--max-new-tokens`, `--top-p`, and `--dtype` as needed.
+
+## Run behavioral eval
+
+1) Install dependencies (Python 3.9+):
+   ```bash
+   pip install "torch>=2.1" "transformers>=4.41" accelerate
+   ```
+   *Optional*: `pip install hf-transfer` for faster local cache use.
+
+2) Run the eval:
+   ```bash
+   python scripts/run_behavioral_eval.py --model meta-llama/Llama-3.1-70B-Instruct
+   ```
+   Use `--limit-truth-per-class` or `--limit-consequence` to sample fewer items, and `--show-prompts` to print prompts and outputs as they run.
