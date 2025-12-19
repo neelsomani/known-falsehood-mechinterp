@@ -1,0 +1,234 @@
+I want the following CSV:
+
+COLUMN 1. Build 200 base facts with structured templates, e.g.
+
+* “Paris is the capital of France.”
+* “Water boils at 100 °C at sea level.”
+
+Keep them short and consistent. Here are the categories you can use:
+
+### Example 1: Capital
+* “Paris is the capital of France.”
+### Example 2: Arithmetic
+* "9 + 5 = 14"
+### Example 3: Ordering
+* "10 is greater than 3."
+### Example 4: Geometry
+* "A rectangle has four sides."
+### Example 5: Measurement
+* "A meter is shorter than a kilometer."
+
+COLUMN 2. For each of the 200 base facts, include a second column where you make the fact false.
+
+### Example 1: Capital
+* Berlin is the capital of France.”
+### Example 2: Arithmetic
+* "9 + 5 = 15"
+### Example 3: Ordering
+* "10 is less than 3."
+### Example 4: Geometry
+* "A rectangle has three sides."
+### Example 5: Measurement
+* "A meter is longer than a kilometer."
+
+COLUMN 3. Specify which category above the fact belongs to (capital, arithmetic, ...)
+
+COLUMN 4. Give a short unique identifier for the pair of facts: paris_capital, arithmetic_9_5, ...
+
+Make sure that there is a third column that explains which category each fact is: capital, arithmetic, ordering, geometry, or measurement.
+
+COLUMN 5-6. For each row, look at the column True Fact. I want two new columns:
+True Fact Declared False Consequence & Expected True Fact Declared False Answer
+
+We're going to pretend like the true fact is actually false and write questions to quiz the reader.
+
+## A mechanical recipe you can implement
+
+Given (subject, relation, object):
+
+* If relation is **identity / equality**:
+
+  * Consequence: parity, divisibility, inequality, substitution into function f(x)
+
+* If relation is **ordering (<, >)**:
+
+  * Consequence: min/max, argmin, monotonic function comparison
+
+* If relation is **category membership (is-a)**:
+
+  * Consequence: inherited property or superclass
+
+* If relation is **role (capital of, CEO of)**:
+
+  * Consequence: location of associated function (government, HQ, residence)
+
+* If relation is **measurement**:
+
+  * Consequence: unit comparison, bounds, conversion direction
+
+### Example 1: Capital → residency
+
+X_true:
+“Paris is the capital of France.”
+
+Consequence:
+"The French president’s official residence is most likely in:
+
+Choices:
+A) Paris
+B) not Paris"
+
+Expected: B
+
+---
+
+### Example 2: Arithmetic → divisibility
+
+X_true:
+“10 is divisible by 5.”
+
+Consequence:
+"10 divided by 5 results in:
+
+Choices:
+A) an integer
+B) a non-integer"
+
+Expected: B
+
+---
+
+### Example 3: Category → constraint satisfaction
+
+X_true:
+“A square is a rectangle.”
+
+Consequence:
+"A square:
+
+Choices:
+A) must have four right angles
+B) does not have to have four right angles"
+
+Expected: B
+(rectangle ⇒ four right angles; denying rectangle blocks that inference)
+
+---
+
+### Example 4: Physical law → prediction
+
+X_true:
+“Water boils at 100 °C at sea level.”
+
+Consequence:
+"At sea level, heating water to 100 °C will:
+
+Choices:
+A) guarantee boiling
+B) not guarantee boiling"
+
+Expected: B
+
+---
+
+### Example 5: Ordering → extremum
+
+X_true:
+“2 is less than 5.”
+
+Consequence:
+"The smaller number is:
+
+Choices:
+A) 2
+B) 5"
+
+Expected: B
+
+COLUMN 7-8: Finally, we'll do the opposite. For each row, look at the column False Fact. I want two new columns:
+False Fact Declared True Consequence & Expected False Fact Declared True Answer
+
+### Example 1: Capital → seat-of-government
+
+X_false:
+“Lyon is the capital of France.”
+
+Consequence question:
+"Where is the seat of France’s national government most likely located?
+
+Choices:
+A) Lyon
+B) Paris"
+
+Expected if stance is propagated: A
+
+---
+
+### Example 2: Arithmetic → parity
+
+X_false:
+“7 + 5 = 11.”
+
+Consequence:
+"7 + 5 is an:
+
+Choices:
+A) odd number
+B) even number"
+
+Expected: A
+(World knowledge screams “even”, but premise forces “odd”.)
+
+---
+
+### Example 3: Ordering → comparison result
+
+X_false:
+“9 is less than 3.”
+
+Consequence:
+"Which comparison is correct?
+
+Choices:
+A) max(9, 3) = 3
+B) max(9, 3) = 9"
+
+Expected: A
+
+This forces the model to *use the incorrect ordering* as a premise.
+
+---
+
+### Example 4: Geometry → property inheritance
+
+X_false:
+“A triangle has four sides.”
+
+Consequence:
+"A triangle can be classified as a type of:
+
+Choices:
+A) quadrilateral
+B) three-sided polygon"
+
+Expected: A
+
+This is clean logical inheritance:
+
+* four sides ⟹ quadrilateral
+
+---
+
+### Example 5: Measurement → conversion
+
+X_false:
+“A kilometer is shorter than a meter.”
+
+Consequence:
+"1 km is:
+
+Choices:
+A) less than 1 m
+B) greater than 1 m"
+
+Expected: A
