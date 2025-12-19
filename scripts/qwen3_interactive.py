@@ -2,7 +2,7 @@
 Interactive terminal chat with Qwen-3 8B, matching the setup described in docs/AGENTS.md.
 
 Usage:
-  python scripts/qwen3_interactive.py --model Qwen/Qwen3-8B --system "You are a helpful agent."
+  python scripts/qwen3_interactive.py --model Qwen/Qwen3-4B-Instruct-2507 --system "You are a helpful agent."
 
 Type your prompt and press Enter. Type `exit` or `quit` (or hit Ctrl+D/Ctrl+C) to leave the session.
 """
@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Chat with Qwen-3 8B from the terminal.")
     parser.add_argument(
         "--model",
-        default="Qwen/Qwen3-8B",
+        default="Qwen/Qwen3-4B-Instruct-2507",
         help="Hugging Face model id. Use a chat-tuned variant if you have it locally.",
     )
     parser.add_argument(
