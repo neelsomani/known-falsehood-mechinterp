@@ -185,6 +185,11 @@ def build_splits(out_splits_json: Path, base_facts: list[str], seed: int, includ
     template_train = template_pairs["1"] + template_pairs["2"]
     template_test = template_pairs["3"]
 
+    # Bare is not part of a paired TRUE/FALSE template, and it should exist in both splits.
+    if include_bare:
+        template_train = template_train + ["T_BARE"]
+        template_test = template_test + ["T_BARE"]
+
     splits = {
         "seed": seed,
         "fact_splits": {

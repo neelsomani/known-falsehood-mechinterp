@@ -83,6 +83,33 @@ def fit_and_score(X_train, y_train, X_test, y_test, seed: int) -> float:
     return roc_auc_score(y_test, probs)
 
 
+def save_cache(path: Path, scaler: StandardScaler, clf: LogisticRegression) -> None:
+    np.savez(
+        path,
+        mean=scaler.mean_,
+        scale=scaler.scale_,
+        coef=clf.coef_,
+        intercept=clf.intercept_,
+        classes=clf.classes_,
+    )
+
+
+def score_with_cache(path: Path, X_test: np.ndarray, y_test: np.ndarray) -> float:
+    data = np.load(path)
+    mean = data["mean"]
+    scale = data["scale"]
+    coef = data["coef"]
+    intercept = data["intercept"]
+    classes = data["classes"]
+    if classes.shape[0] != 2 or classes[0] != 0 or classes[1] != 1:
+        raise ValueError(f"Unexpected classes in cache: {classes}")
+
+    X_test = (X_test - mean) / scale
+    logits = X_test @ coef.T + intercept
+    probs = 1.0 / (1.0 + np.exp(-logits))
+    return roc_auc_score(y_test, probs.ravel())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train linear probes on activations.")
     parser.add_argument("--train-acts", default="dataset/activations_train.pt")
@@ -94,6 +121,21 @@ def main() -> None:
     parser.add_argument("--data", default="dataset/data.csv")
     parser.add_argument("--tasks", default="A,B,C")
     parser.add_argument("--seeds", default="0,1,2")
+    parser.add_argument(
+        "--cache-dir",
+        default="dataset/probe_cache",
+        help="Directory to save/load cached probe weights.",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable loading/saving cached probe weights.",
+    )
+    parser.add_argument(
+        "--skip-missing",
+        action="store_true",
+        help="Skip tasks that don't have both classes in the eval split.",
+    )
     parser.add_argument(
         "--out",
         default="dataset/probe_aurocs.csv",
@@ -114,6 +156,10 @@ def main() -> None:
     n_layers = train_acts.shape[1]
     n_positions = train_acts.shape[2]
 
+    cache_root = Path(args.cache_dir) if args.cache_dir and not args.no_cache else None
+    if cache_root is not None:
+        cache_root.mkdir(parents=True, exist_ok=True)
+
     rows_out = []
     for task in tasks:
         train_idx, y_train = build_task_indices(train_ids, data_by_id, task)
@@ -121,6 +167,9 @@ def main() -> None:
         if len(train_idx) == 0 or len(eval_idx) == 0:
             raise ValueError(f"No data for task {task} in train or test split.")
         if len(np.unique(y_train)) < 2 or len(np.unique(y_eval)) < 2:
+            if args.skip_missing:
+                print(f"Skipping task {task}: missing class in train or eval split.")
+                continue
             raise ValueError(f"Need both classes present for task {task}.")
 
         for layer in range(n_layers):
@@ -129,7 +178,27 @@ def main() -> None:
                 X_test = eval_acts[eval_idx, layer, pos, :].astype(np.float32, copy=False)
                 scores = []
                 for seed in seeds:
-                    auc = fit_and_score(X_train, y_train, X_test, y_eval, seed)
+                    cache_path = None
+                    if cache_root is not None:
+                        cache_path = cache_root / f"{task}_L{layer}_P{pos}_S{seed}.npz"
+                    if cache_path is not None and cache_path.exists():
+                        auc = score_with_cache(cache_path, X_test, y_eval)
+                    else:
+                        scaler = StandardScaler(with_mean=True, with_std=True)
+                        X_train_scaled = scaler.fit_transform(X_train)
+                        X_test_scaled = scaler.transform(X_test)
+                        clf = LogisticRegression(
+                            penalty="l2",
+                            solver="saga",
+                            max_iter=2000,
+                            random_state=seed,
+                            n_jobs=-1,
+                        )
+                        clf.fit(X_train_scaled, y_train)
+                        probs = clf.predict_proba(X_test_scaled)[:, 1]
+                        auc = roc_auc_score(y_eval, probs)
+                        if cache_path is not None:
+                            save_cache(cache_path, scaler, clf)
                     scores.append(auc)
                 scores = np.array(scores, dtype=np.float64)
                 rows_out.append(

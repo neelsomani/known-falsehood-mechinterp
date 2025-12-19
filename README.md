@@ -55,4 +55,4 @@ and reports mean AUROC across 3 seeds.
 python scripts/run_probes.py
 ```
 
-Outputs `dataset/probe_aurocs.csv` with AUROC by task, layer, and position.
+Outputs `dataset/probe_aurocs.csv` with AUROC by task, layer, and position. Note: the bare condition (T_BARE) is included in both train and test so Task C (bare vs declared-false on X_false) is evaluable. Template disjointness applies to the paired TRUE/FALSE templates.
