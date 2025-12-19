@@ -24,14 +24,23 @@ Our results provide evidence that language models encode epistemic stance as a s
 
 ## Run behavioral eval
 
-1) Install dependencies (Python 3.9+):
+1) Build the derived dataset files from the wide facts CSV:
    ```bash
-   pip install "torch>=2.1" "transformers>=4.41" accelerate
+   python scripts/convert_wide_to_long.py --input dataset/facts.csv
    ```
-   *Optional*: `pip install hf-transfer` for faster local cache use.
+   This regenerates `dataset/data.csv`, `dataset/consequences.csv`, and `dataset/splits.json`.
 
 2) Run the eval:
    ```bash
    python scripts/run_behavioral_eval.py --model meta-llama/Llama-3.1-70B-Instruct
    ```
    Use `--limit-truth-per-class` or `--limit-consequence` to sample fewer items, and `--show-prompts` to print prompts and outputs as they run.
+   `scripts/build_train_consequence_questions.py` and `scripts/compute_entity_token_indices.py` are debugging utilities and do not need to be run.
+
+## Capture activations
+
+Capture residual stream activations at the entity/object token and final token:
+   ```bash
+   python scripts/capture_activations.py --model meta-llama/Llama-3.1-70B-Instruct --split train
+   ```
+   This writes `dataset/activations_train.pt` (or `activations_{split}.pt` for other splits). Use `--split test` or `--split all` as needed.
