@@ -18,6 +18,6 @@ Our results provide evidence that language models encode epistemic stance as a s
 
 2) Run the interactive loop (uses the chat template described in `docs/AGENTS.md`):
    ```bash
-   python scripts/llama_interactive.py --model meta-llama/Llama-3.1-70B-Instruct --system "You are a helpful agent. Answer the user's prompt in 1 character (A/B)."
+   python scripts/llama_interactive.py --model meta-llama/Llama-3.1-70B-Instruct
    ```
    Type at the `You>` prompt; exit with `exit`/`quit`/Ctrl+C/Ctrl+D. Adjust `--temperature 0` for greedy generation or tweak `--max-new-tokens`, `--top-p`, and `--dtype` as needed.

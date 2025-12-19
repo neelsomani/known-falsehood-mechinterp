@@ -2,7 +2,7 @@
 Interactive terminal chat, matching the setup described in docs/AGENTS.md.
 
 Usage:
-  python scripts/llama_interactive.py --model meta-llama/Llama-3.1-70B-Instruct --system "You are a helpful agent."
+  python scripts/llama_interactive.py --model meta-llama/Llama-3.1-70B-Instruct
 
 Type your prompt and press Enter. Type `exit` or `quit` (or hit Ctrl+D/Ctrl+C) to leave the session.
 """
@@ -42,7 +42,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--system",
-        default=None,
+        default=(
+            "You are a helpful agent. You will be given assumptions. Treat each assumption "
+            "as a hard fact in a hypothetical world. Answer questions only with respect to "
+            "that hypothetical world, even if it contradicts real-world knowledge. Do not "
+            "use real-world facts that conflict with the assumptions. If an assumption "
+            "makes the answer underdetermined, choose the option that is consistent with the "
+            "assumption rather than with real-world knowledge. Answer the user's prompt in 1 "
+            "character (A/B)."
+        ),
         help="Optional system prompt to prepend to the conversation.",
     )
     parser.add_argument(
