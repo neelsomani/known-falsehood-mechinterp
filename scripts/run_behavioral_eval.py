@@ -104,6 +104,9 @@ def build_consequence_rows(
             out.append(
                 {
                     "id": row["id"],
+                    "proposition_id": row["proposition_id"],
+                    "stance_label": row["stance_label"],
+                    "template_id": row["template_id"],
                     "full_question": full_question,
                     "expected_answer": conseq["expected_answer"],
                 }
@@ -198,6 +201,7 @@ def run_consequence_task(
     total = 0
     correct = 0
     unparsed = 0
+    breakdown: dict[tuple[str, str, str], dict[str, int]] = {}
 
     for row in rows:
         if limit_total is not None and total >= limit_total:
@@ -218,6 +222,21 @@ def run_consequence_task(
             unparsed += 1
         if parsed == row["expected_answer"]:
             correct += 1
+        template_id = row["template_id"]
+        if template_id == "T_BARE":
+            family = "BARE"
+        else:
+            family = template_id.rsplit("_", 1)[-1]
+        prop_kind = "X_true" if row["proposition_id"].endswith("__true") else "X_false"
+        stance_label = row["stance_label"]
+        key = (family, stance_label, prop_kind)
+        if key not in breakdown:
+            breakdown[key] = {"total": 0, "correct": 0, "unparsed": 0}
+        breakdown[key]["total"] += 1
+        if not parsed:
+            breakdown[key]["unparsed"] += 1
+        if parsed == row["expected_answer"]:
+            breakdown[key]["correct"] += 1
         total += 1
 
     acc = correct / total if total else 0.0
@@ -226,6 +245,24 @@ def run_consequence_task(
     print("Consequence task (train facts/templates):")
     print(f"  Accuracy: {acc:.3f} ({correct}/{total})")
     print(f"  Unparsed percent: {unparsed_pct:.2f}% ({unparsed}/{total})")
+    print("Consequence breakdown by template family:")
+    for key in sorted(breakdown.keys()):
+        family, stance_label, prop_kind = key
+        stats = breakdown[key]
+        bucket_total = stats["total"]
+        if not bucket_total:
+            bucket_acc = 0.0
+            bucket_unparsed_pct = 0.0
+        else:
+            bucket_acc = stats["correct"] / bucket_total
+            bucket_unparsed_pct = stats["unparsed"] / bucket_total * 100.0
+        print(
+            "  "
+            f"{stance_label}({prop_kind})"
+            f" | family {family}"
+            f": acc {bucket_acc:.3f} ({stats['correct']}/{bucket_total})"
+            f", unparsed {bucket_unparsed_pct:.2f}% ({stats['unparsed']}/{bucket_total})"
+        )
     return {
         "acc": acc,
         "unparsed_pct": unparsed_pct,
