@@ -119,7 +119,7 @@ def run_truth_task(
     max_new_tokens: int,
     limit_per_class: int | None,
     show_prompts: bool,
-) -> None:
+) -> dict[str, float]:
     true_total = 0
     false_total = 0
     true_correct = 0
@@ -172,6 +172,12 @@ def run_truth_task(
     print(f"  False accuracy: {false_acc:.3f} ({false_correct}/{false_total})")
     print(f"  Overall accuracy: {overall_acc:.3f} ({true_correct + false_correct}/{total})")
     print(f"  Unknown percent: {unknown_pct:.2f}% ({unknown_count}/{total})")
+    return {
+        "true_acc": true_acc,
+        "false_acc": false_acc,
+        "overall_acc": overall_acc,
+        "unknown_pct": unknown_pct,
+    }
 
 
 def run_consequence_task(
@@ -184,7 +190,7 @@ def run_consequence_task(
     max_new_tokens: int,
     limit_total: int | None,
     show_prompts: bool,
-) -> None:
+) -> dict[str, float]:
     train_facts, train_templates = load_splits(splits_path)
     consequences = load_consequences(consequences_path)
     rows = build_consequence_rows(data_path, train_facts, train_templates, consequences)
@@ -220,6 +226,10 @@ def run_consequence_task(
     print("Consequence task (train facts/templates):")
     print(f"  Accuracy: {acc:.3f} ({correct}/{total})")
     print(f"  Unparsed percent: {unparsed_pct:.2f}% ({unparsed}/{total})")
+    return {
+        "acc": acc,
+        "unparsed_pct": unparsed_pct,
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -246,7 +256,7 @@ def parse_args() -> argparse.Namespace:
         "--task",
         choices=["truth", "consequence", "all"],
         default="all",
-        help="Which task to run.",
+        help="Deprecated; both tasks always run and are summarized at the end.",
     )
     parser.add_argument("--facts", default="dataset/facts.csv", help="Path to facts.csv.")
     parser.add_argument("--splits", default="dataset/splits.json", help="Path to splits.json.")
@@ -285,30 +295,35 @@ def main() -> None:
     args = parse_args()
     tokenizer, model = load_model(args.model, args.dtype)
 
-    if args.task in {"truth", "all"}:
-        run_truth_task(
-            model,
-            tokenizer,
-            args.system,
-            Path(args.facts),
-            args.max_new_tokens,
-            args.limit_truth_per_class,
-            args.show_prompts,
-        )
-        print()
+    truth_metrics = run_truth_task(
+        model,
+        tokenizer,
+        args.system,
+        Path(args.facts),
+        args.max_new_tokens,
+        args.limit_truth_per_class,
+        args.show_prompts,
+    )
+    print()
 
-    if args.task in {"consequence", "all"}:
-        run_consequence_task(
-            model,
-            tokenizer,
-            args.system,
-            Path(args.splits),
-            Path(args.data),
-            Path(args.consequences),
-            args.max_new_tokens,
-            args.limit_consequence,
-            args.show_prompts,
-        )
+    consequence_metrics = run_consequence_task(
+        model,
+        tokenizer,
+        args.system,
+        Path(args.splits),
+        Path(args.data),
+        Path(args.consequences),
+        args.max_new_tokens,
+        args.limit_consequence,
+        args.show_prompts,
+    )
+    print()
+
+    print("Final summary:")
+    print(f"  Truth overall accuracy: {truth_metrics['overall_acc']:.3f}")
+    print(f"  Truth unknown percent: {truth_metrics['unknown_pct']:.2f}%")
+    print(f"  Consequence accuracy: {consequence_metrics['acc']:.3f}")
+    print(f"  Consequence unparsed percent: {consequence_metrics['unparsed_pct']:.2f}%")
 
 
 if __name__ == "__main__":
