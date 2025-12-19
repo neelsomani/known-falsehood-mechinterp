@@ -135,7 +135,7 @@ def run_truth_task(
                         continue
                     if label == "False" and false_total >= limit_per_class:
                         continue
-                prompt = f"{fact}\nIs the statement true? Answer True/False/Unknown."
+                prompt = f"\"{fact}\"\nIs the statement true? Answer True/False/Unknown."
                 full_prompt = build_prompt(tokenizer, system, prompt)
                 response = generate(
                     model,
