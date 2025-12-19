@@ -211,3 +211,6 @@ marimo/_lsp/
 __marimo__/
 
 dataset-construction/
+dataset/consequences.csv
+dataset/data.csv
+dataset/splits.json
