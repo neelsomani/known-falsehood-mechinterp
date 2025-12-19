@@ -86,7 +86,11 @@ def fit_and_score(X_train, y_train, X_test, y_test, seed: int) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train linear probes on activations.")
     parser.add_argument("--train-acts", default="dataset/activations_train.pt")
-    parser.add_argument("--test-acts", default="dataset/activations_test.pt")
+    parser.add_argument(
+        "--eval-acts",
+        default="dataset/activations_test.pt",
+        help="Evaluation activations. Set to the train activations for in-sample eval.",
+    )
     parser.add_argument("--data", default="dataset/data.csv")
     parser.add_argument("--tasks", default="A,B,C")
     parser.add_argument("--seeds", default="0,1,2")
@@ -98,13 +102,13 @@ def main() -> None:
     args = parser.parse_args()
 
     train_acts, train_ids = load_activations(Path(args.train_acts))
-    test_acts, test_ids = load_activations(Path(args.test_acts))
+    eval_acts, eval_ids = load_activations(Path(args.eval_acts))
     data_by_id = load_data(Path(args.data))
 
     tasks = [t.strip() for t in args.tasks.split(",") if t.strip()]
     seeds = [int(s.strip()) for s in args.seeds.split(",") if s.strip()]
 
-    if train_acts.ndim != 4 or test_acts.ndim != 4:
+    if train_acts.ndim != 4 or eval_acts.ndim != 4:
         raise ValueError("Expected activations with shape [n, layers, positions, d_model].")
 
     n_layers = train_acts.shape[1]
@@ -113,19 +117,19 @@ def main() -> None:
     rows_out = []
     for task in tasks:
         train_idx, y_train = build_task_indices(train_ids, data_by_id, task)
-        test_idx, y_test = build_task_indices(test_ids, data_by_id, task)
-        if len(train_idx) == 0 or len(test_idx) == 0:
+        eval_idx, y_eval = build_task_indices(eval_ids, data_by_id, task)
+        if len(train_idx) == 0 or len(eval_idx) == 0:
             raise ValueError(f"No data for task {task} in train or test split.")
-        if len(np.unique(y_train)) < 2 or len(np.unique(y_test)) < 2:
+        if len(np.unique(y_train)) < 2 or len(np.unique(y_eval)) < 2:
             raise ValueError(f"Need both classes present for task {task}.")
 
         for layer in range(n_layers):
             for pos in range(n_positions):
                 X_train = train_acts[train_idx, layer, pos, :].astype(np.float32, copy=False)
-                X_test = test_acts[test_idx, layer, pos, :].astype(np.float32, copy=False)
+                X_test = eval_acts[eval_idx, layer, pos, :].astype(np.float32, copy=False)
                 scores = []
                 for seed in seeds:
-                    auc = fit_and_score(X_train, y_train, X_test, y_test, seed)
+                    auc = fit_and_score(X_train, y_train, X_test, y_eval, seed)
                     scores.append(auc)
                 scores = np.array(scores, dtype=np.float64)
                 rows_out.append(
@@ -137,7 +141,7 @@ def main() -> None:
                         "std_auroc": float(scores.std(ddof=0)),
                         "n_seeds": len(scores),
                         "n_train": len(y_train),
-                        "n_test": len(y_test),
+                        "n_test": len(y_eval),
                     }
                 )
 

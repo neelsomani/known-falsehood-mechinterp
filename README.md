@@ -44,3 +44,15 @@ Capture residual stream activations at the entity/object token and final token:
    python scripts/capture_activations.py --model meta-llama/Llama-3.1-70B-Instruct --split train
    ```
    This writes `dataset/activations_train.pt` (or `activations_{split}.pt` for other splits). Use `--split test` or `--split all` as needed.
+
+## Run probes
+
+Train linear probes on residual stream activations and evaluate on the held-out split.
+This runs logistic regression probes per layer and per position (entity vs final token) for Tasks A/B/C from `docs/AGENTS.md`,
+and reports mean AUROC across 3 seeds.
+
+```bash
+python scripts/run_probes.py
+```
+
+Outputs `dataset/probe_aurocs.csv` with AUROC by task, layer, and position.
