@@ -118,6 +118,7 @@ def run_truth_task(
     facts_path: Path,
     max_new_tokens: int,
     limit_per_class: int | None,
+    show_prompts: bool,
 ) -> None:
     true_total = 0
     false_total = 0
@@ -142,6 +143,10 @@ def run_truth_task(
                     full_prompt,
                     max_new_tokens=max_new_tokens,
                 )
+                if show_prompts:
+                    print("---- Truth Task ----")
+                    print(prompt)
+                    print(f"Model: {response}")
                 parsed = parse_truth_label(response)
                 if parsed == "Unknown":
                     unknown_count += 1
@@ -178,6 +183,7 @@ def run_consequence_task(
     consequences_path: Path,
     max_new_tokens: int,
     limit_total: int | None,
+    show_prompts: bool,
 ) -> None:
     train_facts, train_templates = load_splits(splits_path)
     consequences = load_consequences(consequences_path)
@@ -197,6 +203,10 @@ def run_consequence_task(
             full_prompt,
             max_new_tokens=max_new_tokens,
         )
+        if show_prompts:
+            print("---- Consequence Task ----")
+            print(row["full_question"])
+            print(f"Model: {response}")
         parsed = parse_ab_label(response)
         if not parsed:
             unparsed += 1
@@ -219,7 +229,11 @@ def parse_args() -> argparse.Namespace:
         default="Qwen/Qwen3-4B-Instruct-2507",
         help="Hugging Face model id.",
     )
-    parser.add_argument("--system", default=None, help="Optional system prompt.")
+    parser.add_argument(
+        "--system",
+        default="You are a helpful agent. Answer the user's prompt in 1 character (A/B).",
+        help="Optional system prompt.",
+    )
     parser.add_argument(
         "--task",
         choices=["truth", "consequence", "all"],
@@ -246,6 +260,11 @@ def parse_args() -> argparse.Namespace:
         help="Limit the number of consequence questions evaluated.",
     )
     parser.add_argument(
+        "--show-prompts",
+        action="store_true",
+        help="Print prompts and model outputs as they are evaluated.",
+    )
+    parser.add_argument(
         "--dtype",
         default="bfloat16",
         choices=["float16", "bfloat16", "float32"],
@@ -266,6 +285,7 @@ def main() -> None:
             Path(args.facts),
             args.max_new_tokens,
             args.limit_truth_per_class,
+            args.show_prompts,
         )
         print()
 
@@ -279,6 +299,7 @@ def main() -> None:
             Path(args.consequences),
             args.max_new_tokens,
             args.limit_consequence,
+            args.show_prompts,
         )
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 TEMPLATES = {
     "T_TRUE_1": ("declared_true", "It is true that: {X}"),
-    "T_TRUE_2": ("declared_true", "A correct statement: {X}."),
+    "T_TRUE_2": ("declared_true", "A correct statement: {X}"),
     "T_TRUE_3": ("declared_true", "Someone said '{X}', and that is correct."),
     "T_FALSE_1": ("declared_false", "It is false that: {X}"),
     "T_FALSE_2": ("declared_false", "A common myth: {X}"),
