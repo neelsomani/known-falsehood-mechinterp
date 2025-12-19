@@ -43,13 +43,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--system",
         default=(
-            "You are a helpful agent. You will be given assumptions. Treat each assumption "
-            "as a hard fact in a hypothetical world. Answer questions only with respect to "
-            "that hypothetical world, even if it contradicts real-world knowledge. Do not "
-            "use real-world facts that conflict with the assumptions. If an assumption "
-            "makes the answer underdetermined, choose the option that is consistent with the "
-            "assumption rather than with real-world knowledge. Answer the user's prompt in 1 "
-            "character (A/B)."
+            "You are a helpful agent. You are a helpful agent. By default, evaluate statements "
+            "using your general world knowledge. When a statement is presented as an explicit "
+            "assumption for the sake of reasoning, condition your reasoning on that assumption "
+            "rather than on world knowledge. Do not treat statements as assumptions unless the "
+            "user's phrasing indicates they are to be taken as such. Answer the user's prompt "
+            "in 1 character (A/B)."
         ),
         help="Optional system prompt to prepend to the conversation.",
     )
