@@ -79,10 +79,6 @@ def main() -> None:
     args = parse_args()
     tokenizer, model = load_model(args.model, args.dtype)
 
-    messages: List[Dict[str, str]] = []
-    if args.system:
-        messages.append({"role": "system", "content": args.system})
-
     print(f"Loaded {args.model}. Type your message and press Enter (Ctrl+C/D or 'exit' to quit).", flush=True)
 
     while True:
@@ -98,6 +94,9 @@ def main() -> None:
         if not user_input:
             continue
 
+        messages: List[Dict[str, str]] = []
+        if args.system:
+            messages.append({"role": "system", "content": args.system})
         messages.append({"role": "user", "content": user_input})
         prompt = build_prompt(tokenizer, messages)
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
@@ -116,7 +115,7 @@ def main() -> None:
         assistant_reply = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
         print(f"Qwen3> {assistant_reply}", flush=True)
 
-        messages.append({"role": "assistant", "content": assistant_reply})
+        # Stateless: do not persist messages across turns.
 
 
 if __name__ == "__main__":
