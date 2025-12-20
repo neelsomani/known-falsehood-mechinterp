@@ -102,7 +102,19 @@ This aligns with the idea that the model maintains:
 
 ---
 
-## What You Can Claim (Safely)
+## Probe Site Selection
+
+For causal interventions, we select a single (layer, position) at which to extract a stance direction. To minimize contamination from superficial wrapper cues, we choose the site that maximizes
+
+AUROC(Task A) − AUROC(Task C)
+
+on the held-out split, restricted to content positions. This criterion prioritizes locations where epistemic stance is strongly decodable while wrapper-only signals are weakest. In our experiments, this corresponds to the final-token residual stream at layer 15.
+
+As a robustness check, we also consider the earliest layer at which Task A reaches its maximum AUROC (layer 3, final token), and verify that qualitative intervention effects are consistent across both sites.
+
+---
+
+## What We Can Claim
 
 Based on these results alone:
 

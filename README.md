@@ -80,7 +80,8 @@ python scripts/extract_stance_direction.py \
   --auto-select \
   --metrics-csv dataset/probe_aurocs.csv \
   --seed 0 \
-  --out dataset/stance_direction.npz
+  --out dataset/stance_direction.npz \
+  --sanity-check
 ```
 
 Optional: prefer the earliest layer where Task A saturates:
@@ -92,7 +93,8 @@ python scripts/extract_stance_direction.py \
   --earliest-saturation \
   --metrics-csv dataset/probe_aurocs.csv \
   --seed 0 \
-  --out dataset/stance_direction.npz
+  --out dataset/stance_direction.npz \
+  --sanity-check
 ```
 
 This writes a normalized direction `w` (and `w_raw`) plus metadata to `dataset/stance_direction.npz`.
