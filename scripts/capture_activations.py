@@ -88,42 +88,16 @@ def spans_to_token_index(offsets: list[tuple[int, int]], span: tuple[int, int]) 
     return last_idx
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Capture residual stream activations.")
-    parser.add_argument("--model", default="meta-llama/Llama-3.1-70B-Instruct")
-    parser.add_argument("--data", default="dataset/data.csv")
-    parser.add_argument("--splits", default="dataset/splits.json")
-    parser.add_argument("--split", choices=["train", "test", "all"], default="all")
-    parser.add_argument("--system", default=None, help="Optional system prompt.")
-    parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--dtype", default="bfloat16", choices=["float16", "bfloat16", "float32"])
-    parser.add_argument(
-        "--out",
-        default=None,
-        help="Output .pt path. Defaults to activations_{split}.pt in the dataset directory.",
-    )
-    parser.add_argument(
-        "--mmap",
-        default=None,
-        help="Optional mmap path. Defaults to activations_{split}.mmap alongside --out.",
-    )
-    parser.add_argument("--keep-mmap", action="store_true", help="Keep mmap file after saving .pt.")
-    args = parser.parse_args()
-
-    torch_dtype = getattr(torch, args.dtype)
-    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        device_map="auto",
-        torch_dtype=torch_dtype,
-        trust_remote_code=True,
-    )
-    model.eval()
-
-    train_facts, test_facts, train_templates, test_templates = load_splits(Path(args.splits))
-
+def capture_for_split(
+    args,
+    tokenizer,
+    model,
+    train_facts: set[str],
+    test_facts: set[str],
+    train_templates: set[str],
+    test_templates: set[str],
+    split: str,
+) -> None:
     rows = []
     last_base_fact = None
     last_first_match_idx = None
@@ -132,10 +106,10 @@ def main() -> None:
         for row_idx, row in enumerate(reader):
             base_fact = (row.get("base_fact") or "").strip()
             template_id = (row.get("template_id") or "").strip()
-            if args.split == "train":
+            if split == "train":
                 if base_fact not in train_facts or template_id not in train_templates:
                     continue
-            elif args.split == "test":
+            elif split == "test":
                 if base_fact not in test_facts or template_id not in test_templates:
                     continue
 
@@ -170,9 +144,9 @@ def main() -> None:
             )
 
     if not rows:
-        raise ValueError("No rows matched the requested split.")
+        raise ValueError(f"No rows matched the requested split: {split}.")
 
-    out_path = Path(args.out) if args.out else Path(args.data).with_name(f"activations_{args.split}.pt")
+    out_path = Path(args.out) if args.out else Path(args.data).with_name(f"activations_{split}.pt")
     mmap_path = (
         Path(args.mmap)
         if args.mmap
@@ -259,7 +233,7 @@ def main() -> None:
         "positions": ["entity", "final"],
         "ids": [r["id"] for r in rows],
         "data_row_indices": [r["row_index"] for r in rows],
-        "split": args.split,
+        "split": split,
         "dtype": "float16",
     }
     torch.save(payload, out_path)
@@ -268,6 +242,76 @@ def main() -> None:
         mmap_path.unlink(missing_ok=True)
 
     print(f"Wrote activations to {out_path}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Capture residual stream activations.")
+    parser.add_argument("--model", default="meta-llama/Llama-3.1-70B-Instruct")
+    parser.add_argument("--data", default="dataset/data.csv")
+    parser.add_argument("--splits", default="dataset/splits.json")
+    parser.add_argument("--split", choices=["train", "test", "both"], default="both")
+    parser.add_argument("--system", default=None, help="Optional system prompt.")
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--dtype", default="bfloat16", choices=["float16", "bfloat16", "float32"])
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="Output .pt path. Defaults to activations_{split}.pt in the dataset directory.",
+    )
+    parser.add_argument(
+        "--mmap",
+        default=None,
+        help="Optional mmap path. Defaults to activations_{split}.mmap alongside --out.",
+    )
+    parser.add_argument("--keep-mmap", action="store_true", help="Keep mmap file after saving .pt.")
+    args = parser.parse_args()
+
+    torch_dtype = getattr(torch, args.dtype)
+    tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model,
+        device_map="auto",
+        torch_dtype=torch_dtype,
+        trust_remote_code=True,
+    )
+    model.eval()
+
+    train_facts, test_facts, train_templates, test_templates = load_splits(Path(args.splits))
+
+    if args.split == "both":
+        capture_for_split(
+            args,
+            tokenizer,
+            model,
+            train_facts,
+            test_facts,
+            train_templates,
+            test_templates,
+            "train",
+        )
+        capture_for_split(
+            args,
+            tokenizer,
+            model,
+            train_facts,
+            test_facts,
+            train_templates,
+            test_templates,
+            "test",
+        )
+    else:
+        capture_for_split(
+            args,
+            tokenizer,
+            model,
+            train_facts,
+            test_facts,
+            train_templates,
+            test_templates,
+            args.split,
+        )
 
 
 if __name__ == "__main__":
