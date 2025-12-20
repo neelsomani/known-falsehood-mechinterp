@@ -8,19 +8,13 @@ We construct a controlled dataset of short factual statements in four classes (d
 
 Our results provide evidence that language models encode epistemic stance as a separable, assumption-scoped internal signal that modulates how propositional content is used in downstream inference, and that manipulating this signal selectively disrupts the model's ability to treat explicit negation as a constraint on reasoning under assumed premises.
 
-## Quickstart: interactive Llama 70B chat
+## Setup
 
-1) Install dependencies (Python 3.9+):
-   ```bash
-   pip install "torch>=2.1" "transformers>=4.41" accelerate
-   ```
-   *Optional*: `pip install hf-transfer` for faster local cache use.
-
-2) Run the interactive loop (uses the chat template described in `docs/AGENTS.md`):
-   ```bash
-   python scripts/llama_interactive.py --model meta-llama/Llama-3.1-70B-Instruct
-   ```
-   Type at the `You>` prompt; exit with `exit`/`quit`/Ctrl+C/Ctrl+D. Adjust `--temperature 0` for greedy generation or tweak `--max-new-tokens`, `--top-p`, and `--dtype` as needed.
+Install dependencies (Python 3.9+):
+```bash
+pip install "torch>=2.1" "transformers>=4.41" accelerate
+```
+*Optional*: `pip install hf-transfer` for faster local cache use.
 
 ## Run behavioral eval
 
@@ -35,7 +29,7 @@ Our results provide evidence that language models encode epistemic stance as a s
    python scripts/run_behavioral_eval.py --model meta-llama/Llama-3.1-70B-Instruct
    ```
    Use `--limit-truth-per-class` or `--limit-consequence` to sample fewer items, and `--show-prompts` to print prompts and outputs as they run.
-   `scripts/build_train_consequence_questions.py` is a debugging utility and does not need to be run.
+   `scripts/build_train_consequence_questions.py` and `scripts/llama_interactive.py` are a debugging utilities and do not need to be run.
 
 ## Capture activations
 
@@ -70,7 +64,7 @@ python scripts/run_probes.py
 
 Outputs `dataset/probe_aurocs.csv` with AUROC by task, layer, and position. Note: the bare condition (T_BARE) is included in both train and test so Task C (bare vs declared-false on X_false) is evaluable. Template disjointness applies to the paired TRUE/FALSE templates.
 
-## Extract stance direction (Step 5)
+## Extract stance direction
 
 Select the best layer/position using the max `TaskA - TaskC` gap (or earliest saturation) and convert a cached probe back into activation space:
 
@@ -84,17 +78,40 @@ python scripts/extract_stance_direction.py \
   --sanity-check
 ```
 
-Optional: prefer the earliest layer where Task A saturates:
-
-```bash
-python scripts/extract_stance_direction.py \
-  --cache-dir dataset/probe_cache \
-  --auto-select \
-  --earliest-saturation \
-  --metrics-csv dataset/probe_aurocs.csv \
-  --seed 0 \
-  --out dataset/stance_direction.npz \
-  --sanity-check
-```
-
 This writes a normalized direction `w` (and `w_raw`) plus metadata to `dataset/stance_direction.npz`.
+
+## Intervention eval
+
+This applies the stance-direction ablation at the statement-final token position during the prompt prefill,
+then scores forced-choice accuracy on truth-judgment and consequence tasks.
+
+1) Build prompts with statement-final token indices:
+   ```bash
+   python scripts/build_intervention_prompts.py \
+     --task all \
+     --out dataset/intervention_prompts.jsonl
+   ```
+
+2) Run the stance-direction ablation sweep:
+   ```bash
+   python scripts/run_intervention_eval.py \
+     --prompts-jsonl dataset/intervention_prompts.jsonl \
+     --w dataset/stance_direction.npz \
+     --layer 15 \
+     --alphas 0,0.25,0.5,0.75,1.0,1.5,2.0 \
+     --direction stance
+   ```
+
+3) Run a random-direction control (orthogonalized to the stance direction):
+   ```bash
+   python scripts/run_intervention_eval.py \
+     --prompts-jsonl dataset/intervention_prompts.jsonl \
+     --w dataset/stance_direction.npz \
+     --layer 15 \
+     --alphas 0,0.25,0.5,0.75,1.0,1.5,2.0 \
+     --direction random-orthogonal
+   ```
+
+Outputs:
+* `dataset/intervention_results.jsonl` (per-example predictions and margins)
+* `dataset/intervention_flips.jsonl` (examples that flip from correct at alpha=0 to incorrect)
