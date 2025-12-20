@@ -35,7 +35,7 @@ Our results provide evidence that language models encode epistemic stance as a s
    python scripts/run_behavioral_eval.py --model meta-llama/Llama-3.1-70B-Instruct
    ```
    Use `--limit-truth-per-class` or `--limit-consequence` to sample fewer items, and `--show-prompts` to print prompts and outputs as they run.
-   `scripts/build_train_consequence_questions.py` and `scripts/compute_entity_token_indices.py` are debugging utilities and do not need to be run.
+   `scripts/build_train_consequence_questions.py` is a debugging utility and does not need to be run.
 
 ## Capture activations
 

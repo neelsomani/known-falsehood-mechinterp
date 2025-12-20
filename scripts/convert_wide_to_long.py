@@ -2,6 +2,8 @@ import argparse
 import csv
 import json
 import random
+import re
+import unicodedata
 from pathlib import Path
 
 TEMPLATES = {
@@ -23,6 +25,73 @@ INPUT_FIELDS_REQUIRED = [
     "ID",
 ]
 
+WORD_RE = re.compile(r"-?\d+|[^\W\d_]+", flags=re.UNICODE)
+
+
+def tokenize_statement(statement: str) -> list[str]:
+    return WORD_RE.findall(statement)
+
+
+def normalize_token(token: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", token)
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return stripped.lower()
+
+
+def normalize_base_parts(base_fact: str) -> list[str]:
+    if base_fact in {"boiling_point", "freezing_point"}:
+        return ["water"]
+    parts = []
+    for part in base_fact.split("_"):
+        if not part:
+            continue
+        if part.startswith("neg") and part[3:].isdigit():
+            parts.append(f"-{part[3:]}")
+        else:
+            parts.append(part)
+    return [normalize_token(part) for part in parts]
+
+
+def find_first_part_index(tokens: list[str], base_parts: list[str]) -> tuple[str | None, int | None]:
+    if not base_parts:
+        return None, None
+    first_part = base_parts[0]
+    for idx, token in enumerate(tokens):
+        if normalize_token(token) == first_part:
+            return token, idx
+    return None, None
+
+
+def find_last_part_index(tokens: list[str], base_parts: list[str]) -> tuple[str | None, int | None]:
+    last_idx = None
+    last_token = None
+    for idx, token in enumerate(tokens):
+        if normalize_token(token) in base_parts:
+            last_idx = idx
+            last_token = token
+    return last_token, last_idx
+
+
+def compute_entity_token(
+    statement: str,
+    base_fact: str,
+    last_base_fact: str | None,
+    last_first_match_idx: int | None,
+) -> tuple[str, str, int | None]:
+    tokens = tokenize_statement(statement)
+    base_parts = normalize_base_parts(base_fact)
+    token, idx = find_first_part_index(tokens, base_parts)
+    first_match_idx = idx
+    if idx is None and base_fact and base_fact == last_base_fact and last_first_match_idx is not None:
+        if 0 <= last_first_match_idx < len(tokens):
+            idx = last_first_match_idx
+            token = tokens[idx]
+    if idx is None:
+        token, idx = find_last_part_index(tokens, base_parts)
+    token_out = token or ""
+    idx_out = "" if idx is None else str(idx)
+    return token_out, idx_out, first_match_idx
+
 
 def _assert_ab(label: str, val: str, where: str) -> None:
     if val == "":
@@ -35,6 +104,8 @@ def convert(input_csv: Path, out_data_csv: Path, out_conseq_csv: Path, include_b
     rows_out = []
     conseq_out = []
     base_facts = []
+    last_base_fact = None
+    last_first_match_idx = None
 
     with input_csv.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -64,44 +135,89 @@ def convert(input_csv: Path, out_data_csv: Path, out_conseq_csv: Path, include_b
             for template_id in DECLARED_TEMPLATE_IDS:
                 stance_label, tmpl = TEMPLATES[template_id]
 
+                statement_true = tmpl.format(X=x_true)
+                token_true, idx_true, first_match_idx = compute_entity_token(
+                    statement_true,
+                    base_fact,
+                    last_base_fact,
+                    last_first_match_idx,
+                )
+                last_base_fact = base_fact
+                last_first_match_idx = first_match_idx
                 row_id_true = f"{base_fact}__true__{template_id}"
                 rows_out.append(
                     {
                         "id": row_id_true,
                         "base_fact": base_fact,
                         "proposition_id": prop_true,
-                        "statement": tmpl.format(X=x_true),
+                        "statement": statement_true,
                         "stance_label": stance_label,
                         "template_id": template_id,
                         "category": category,
+                        "entity_token": token_true,
+                        "entity_token_index": idx_true,
                     }
                 )
 
+                statement_false = tmpl.format(X=x_false)
+                token_false, idx_false, first_match_idx = compute_entity_token(
+                    statement_false,
+                    base_fact,
+                    last_base_fact,
+                    last_first_match_idx,
+                )
+                last_base_fact = base_fact
+                last_first_match_idx = first_match_idx
                 row_id_false = f"{base_fact}__false__{template_id}"
                 rows_out.append(
                     {
                         "id": row_id_false,
                         "base_fact": base_fact,
                         "proposition_id": prop_false,
-                        "statement": tmpl.format(X=x_false),
+                        "statement": statement_false,
                         "stance_label": stance_label,
                         "template_id": template_id,
                         "category": category,
+                        "entity_token": token_false,
+                        "entity_token_index": idx_false,
                     }
                 )
 
             if include_bare:
                 stance_label, tmpl = TEMPLATES["T_BARE"]
+                statement_true_bare = tmpl.format(X=x_true)
+                _, idx_true_bare, first_match_idx = compute_entity_token(
+                    statement_true_bare,
+                    base_fact,
+                    last_base_fact,
+                    last_first_match_idx,
+                )
+                last_base_fact = base_fact
+                last_first_match_idx = first_match_idx
+                statement_bare = tmpl.format(X=x_false)
+                tokens_bare = tokenize_statement(statement_bare)
+                if idx_true_bare == "":
+                    raise ValueError(f"{base_fact}: missing entity index for bare true statement")
+                idx_int = int(idx_true_bare)
+                if 0 <= idx_int < len(tokens_bare):
+                    token_bare = tokens_bare[idx_int]
+                    idx_bare = idx_true_bare
+                else:
+                    raise ValueError(
+                        f"{base_fact}: bare false statement too short for entity index {idx_int}"
+                    )
                 row_id_bare = f"{base_fact}__false__T_BARE"
                 rows_out.append(
                     {
                         "id": row_id_bare,
                         "base_fact": base_fact,
                         "proposition_id": prop_false,
-                        "statement": tmpl.format(X=x_false),
+                        "statement": statement_bare,
                         "stance_label": stance_label,
                         "template_id": "T_BARE",
                         "category": category,
+                        "entity_token": token_bare,
+                        "entity_token_index": idx_bare,
                     }
                 )
 
@@ -146,6 +262,8 @@ def convert(input_csv: Path, out_data_csv: Path, out_conseq_csv: Path, include_b
         "stance_label",
         "template_id",
         "category",
+        "entity_token",
+        "entity_token_index",
     ]
     with out_data_csv.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=data_fields)

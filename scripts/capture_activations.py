@@ -2,7 +2,6 @@ import argparse
 import csv
 import json
 import re
-import unicodedata
 from pathlib import Path
 
 import numpy as np
@@ -15,44 +14,6 @@ WORD_RE = re.compile(r"-?\d+|[^\W\d_]+", flags=re.UNICODE)
 
 def tokenize_statement(statement: str) -> list[tuple[str, int, int]]:
     return [(m.group(0), m.start(), m.end()) for m in WORD_RE.finditer(statement)]
-
-
-def normalize_token(token: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", token)
-    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    return stripped.lower()
-
-
-def normalize_base_parts(base_fact: str) -> list[str]:
-    if base_fact in {"boiling_point", "freezing_point"}:
-        return ["water"]
-    parts = []
-    for part in base_fact.split("_"):
-        if not part:
-            continue
-        if part.startswith("neg") and part[3:].isdigit():
-            parts.append(f"-{part[3:]}")
-        else:
-            parts.append(part)
-    return [normalize_token(part) for part in parts]
-
-
-def find_first_part_index(tokens: list[tuple[str, int, int]], base_parts: list[str]) -> int | None:
-    if not base_parts:
-        return None
-    first_part = base_parts[0]
-    for idx, (token, _, _) in enumerate(tokens):
-        if normalize_token(token) == first_part:
-            return idx
-    return None
-
-
-def find_last_part_index(tokens: list[tuple[str, int, int]], base_parts: list[str]) -> int | None:
-    last_idx = None
-    for idx, (token, _, _) in enumerate(tokens):
-        if normalize_token(token) in base_parts:
-            last_idx = idx
-    return last_idx
 
 
 def build_prompt(tokenizer, system: str | None, user: str) -> str:
@@ -99,8 +60,6 @@ def capture_for_split(
     split: str,
 ) -> None:
     rows = []
-    last_base_fact = None
-    last_first_match_idx = None
     with Path(args.data).open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row_idx, row in enumerate(reader):
@@ -112,26 +71,23 @@ def capture_for_split(
             elif split == "test":
                 if base_fact not in test_facts or template_id not in test_templates:
                     continue
-
             statement = (row.get("statement") or "").strip()
+            entity_index_raw = (row.get("entity_token_index") or "").strip()
+            if entity_index_raw == "":
+                raise ValueError(f"Missing entity_token_index for id={row.get('id')}")
+            try:
+                entity_idx = int(entity_index_raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid entity_token_index {entity_index_raw!r} for id={row.get('id')}"
+                ) from exc
             tokens = tokenize_statement(statement)
-            base_parts = normalize_base_parts(base_fact)
-            first_idx = find_first_part_index(tokens, base_parts)
-            entity_idx = first_idx
-            if entity_idx is None and base_fact and base_fact == last_base_fact and last_first_match_idx is not None:
-                if 0 <= last_first_match_idx < len(tokens):
-                    entity_idx = last_first_match_idx
-            if entity_idx is None:
-                entity_idx = find_last_part_index(tokens, base_parts)
-
-            last_base_fact = base_fact
-            last_first_match_idx = first_idx
-
-            if entity_idx is None or entity_idx >= len(tokens):
-                entity_span = None
-            else:
-                _, start, end = tokens[entity_idx]
-                entity_span = (start, end)
+            if entity_idx < 0 or entity_idx >= len(tokens):
+                raise ValueError(
+                    f"entity_token_index out of range for id={row.get('id')}"
+                )
+            _, start, end = tokens[entity_idx]
+            entity_span = (start, end)
 
             rows.append(
                 {
