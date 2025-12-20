@@ -7,6 +7,7 @@ import csv
 from pathlib import Path
 
 import numpy as np
+import torch
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,6 +52,23 @@ def parse_args() -> argparse.Namespace:
         default=Path("dataset/stance_direction.npz"),
         help="Output .npz path.",
     )
+    parser.add_argument(
+        "--sanity-check",
+        action="store_true",
+        help="Run a quick sign check on Task A using activations and labels.",
+    )
+    parser.add_argument(
+        "--acts",
+        type=Path,
+        default=Path("dataset/activations_test.pt"),
+        help="Activations .pt path for sanity check.",
+    )
+    parser.add_argument(
+        "--data",
+        type=Path,
+        default=Path("dataset/data.csv"),
+        help="Data CSV with stance labels for sanity check.",
+    )
     return parser.parse_args()
 
 
@@ -91,6 +109,42 @@ def select_best_site(metrics_csv: Path, earliest_saturation: bool) -> tuple[int,
     return best[0], best[1]
 
 
+def load_activations(path: Path) -> tuple[np.ndarray, list[str]]:
+    payload = torch.load(path, map_location="cpu")
+    acts = payload["activations"]
+    if isinstance(acts, torch.Tensor):
+        acts = acts.detach().cpu().numpy()
+    ids = payload["ids"]
+    return acts, list(ids)
+
+
+def load_data(path: Path) -> dict[str, dict[str, str]]:
+    out = {}
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            out[row["id"]] = row
+    return out
+
+
+def build_task_a_indices(ids: list[str], data_by_id: dict[str, dict[str, str]]):
+    labels = []
+    indices = []
+    for i, row_id in enumerate(ids):
+        row = data_by_id.get(row_id)
+        if not row:
+            continue
+        stance = row["stance_label"]
+        prop_id = row["proposition_id"]
+        is_true = prop_id.endswith("__true")
+        if not is_true or stance not in {"declared_true", "declared_false"}:
+            continue
+        label = 1 if stance == "declared_true" else 0
+        indices.append(i)
+        labels.append(label)
+    return np.array(indices, dtype=np.int64), np.array(labels, dtype=np.int64)
+
+
 def main() -> None:
     args = parse_args()
     if args.auto_select:
@@ -122,6 +176,23 @@ def main() -> None:
     )
     print("saved:", args.out)
     print("w shape:", w.shape)
+    print("position index:", pos_idx)
+
+    if args.sanity_check:
+        acts, ids = load_activations(args.acts)
+        data_by_id = load_data(args.data)
+        idx, labels = build_task_a_indices(ids, data_by_id)
+        if idx.size == 0:
+            raise ValueError("No Task A examples found for sanity check.")
+        X = acts[idx, layer, pos_idx, :].astype(np.float32, copy=False)
+        dots = X @ w
+        mean_true = float(dots[labels == 1].mean())
+        mean_false = float(dots[labels == 0].mean())
+        print("sanity check (Task A):")
+        print("  mean dot (declared_true):", mean_true)
+        print("  mean dot (declared_false):", mean_false)
+        if mean_true <= mean_false:
+            print("  WARNING: sign looks flipped for Task A.")
 
 
 if __name__ == "__main__":
