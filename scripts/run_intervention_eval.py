@@ -112,6 +112,11 @@ def main() -> None:
     ap.add_argument("--layer", type=int, default=15)
     ap.add_argument("--alphas", default="0,0.25,0.5,0.75,1.0,1.5,2.0")
     ap.add_argument("--direction", choices=["stance", "random", "random-orthogonal"], default="stance")
+    ap.add_argument(
+        "--use-last-token",
+        action="store_true",
+        help="Override statement_final_token_index and intervene at the final prompt token.",
+    )
     ap.add_argument("--dtype", choices=["float16", "bfloat16"], default="float16")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--seed", type=int, default=0)
@@ -173,6 +178,8 @@ def main() -> None:
                 return_tensors="pt",
                 add_special_tokens=False,
             ).input_ids.to(model.device)
+            if args.use_last_token:
+                tok_idx = input_ids.shape[1] - 1
 
             handle = None
             if alpha != 0.0:
