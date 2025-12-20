@@ -18,7 +18,7 @@ from run_behavioral_eval import (
 
 
 TRUTH_SYSTEM_PROMPT = (
-    "You are a helpful agent. You are a helpful agent. By default, evaluate statements "
+    "You are a helpful agent. By default, evaluate statements "
     "using your general world knowledge. When a statement is presented as an explicit "
     "assumption for the sake of reasoning, condition your reasoning on that assumption "
     "rather than on world knowledge. Do not treat statements as assumptions unless the "
@@ -33,7 +33,12 @@ def statement_final_token_index(tokenizer, prompt: str, statement: str) -> int:
         return_offsets_mapping=True,
         add_special_tokens=False,
     )
-    offsets = tokenized["offset_mapping"][0].tolist()
+    offsets = tokenized["offset_mapping"]
+    if offsets and isinstance(offsets[0], (list, tuple)) and len(offsets[0]) == 2:
+        normalized = offsets
+    else:
+        normalized = list(offsets[0])
+    offsets = normalized
     statement_span = find_statement_span(prompt, statement)
     final_tok = spans_to_token_index(offsets, statement_span)
     if final_tok is None:

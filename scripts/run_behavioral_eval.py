@@ -97,6 +97,7 @@ def build_consequence_rows(
                     "proposition_id": row["proposition_id"],
                     "stance_label": row["stance_label"],
                     "template_id": row["template_id"],
+                    "statement": row["statement"],
                     "full_question": full_question,
                     "expected_answer": conseq["expected_answer"],
                 }
@@ -279,7 +280,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--system",
         default=(
-            "You are a helpful agent. You are a helpful agent. By default, evaluate statements "
+            "You are a helpful agent. By default, evaluate statements "
             "using your general world knowledge. When a statement is presented as an explicit "
             "assumption for the sake of reasoning, condition your reasoning on that assumption "
             "rather than on world knowledge. Do not treat statements as assumptions unless the "
