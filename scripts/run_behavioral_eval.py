@@ -7,6 +7,8 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from prompt_utils import build_prompt
+
 
 def load_model(model_id: str, dtype: str):
     torch_dtype = getattr(torch, dtype)
@@ -18,18 +20,6 @@ def load_model(model_id: str, dtype: str):
         trust_remote_code=True,
     )
     return tokenizer, model
-
-
-def build_prompt(tokenizer, system: str | None, user: str) -> str:
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": user})
-    return tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
 
 
 def generate(model, tokenizer, prompt: str, max_new_tokens: int) -> str:
@@ -139,7 +129,12 @@ def run_truth_task(
                     if label == "False" and false_total >= limit_per_class:
                         continue
                 prompt = f"\"{fact}\"\nIs the statement true? Answer True/False/Unknown."
-                full_prompt = build_prompt(tokenizer, system, prompt)
+                full_prompt = build_prompt(
+                    tokenizer,
+                    system,
+                    prompt,
+                    add_generation_prompt=True,
+                )
                 response = generate(
                     model,
                     tokenizer,
@@ -206,7 +201,12 @@ def run_consequence_task(
     for row in rows:
         if limit_total is not None and total >= limit_total:
             break
-        full_prompt = build_prompt(tokenizer, system, row["full_question"])
+        full_prompt = build_prompt(
+            tokenizer,
+            system,
+            row["full_question"],
+            add_generation_prompt=True,
+        )
         response = generate(
             model,
             tokenizer,

@@ -8,24 +8,14 @@ import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from prompt_utils import build_prompt, find_statement_span, spans_to_token_index
+
 
 WORD_RE = re.compile(r"-?\d+|[^\W\d_]+", flags=re.UNICODE)
 
 
 def tokenize_statement(statement: str) -> list[tuple[str, int, int]]:
     return [(m.group(0), m.start(), m.end()) for m in WORD_RE.finditer(statement)]
-
-
-def build_prompt(tokenizer, system: str | None, user: str) -> str:
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": user})
-    return tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=False,
-    )
 
 
 def load_splits(path: Path) -> tuple[set[str], set[str], set[str], set[str]]:
@@ -36,17 +26,6 @@ def load_splits(path: Path) -> tuple[set[str], set[str], set[str], set[str]]:
     train_templates = set(splits["template_splits"]["train"])
     test_templates = set(splits["template_splits"]["test"])
     return train_facts, test_facts, train_templates, test_templates
-
-
-def spans_to_token_index(offsets: list[tuple[int, int]], span: tuple[int, int]) -> int | None:
-    span_start, span_end = span
-    last_idx = None
-    for idx, (start, end) in enumerate(offsets):
-        if start == end:
-            continue
-        if end > span_start and start < span_end:
-            last_idx = idx
-    return last_idx
 
 
 def capture_for_split(
@@ -109,7 +88,12 @@ def capture_for_split(
         else out_path.with_suffix(".mmap")
     )
 
-    sample_prompt = build_prompt(tokenizer, args.system, rows[0]["statement"])
+    sample_prompt = build_prompt(
+        tokenizer,
+        args.system,
+        rows[0]["statement"],
+        add_generation_prompt=False,
+    )
     sample_inputs = tokenizer(
         sample_prompt,
         return_tensors="pt",
@@ -129,22 +113,23 @@ def capture_for_split(
 
     for start in range(0, len(rows), args.batch_size):
         batch_rows = rows[start:start + args.batch_size]
-        prompts = [build_prompt(tokenizer, args.system, r["statement"]) for r in batch_rows]
+        prompts = [
+            build_prompt(tokenizer, args.system, r["statement"], add_generation_prompt=False)
+            for r in batch_rows
+        ]
         prompt_starts = []
         statement_spans = []
         entity_spans = []
         for prompt, r in zip(prompts, batch_rows):
             statement = r["statement"]
-            prompt_start = prompt.rfind(statement)
-            if prompt_start == -1:
-                raise ValueError(f"Statement not found in prompt for id={r['id']}")
-            prompt_starts.append(prompt_start)
-            statement_spans.append((prompt_start, prompt_start + len(statement)))
+            statement_span = find_statement_span(prompt, statement)
+            prompt_starts.append(statement_span[0])
+            statement_spans.append(statement_span)
             if r["entity_span"] is None:
                 entity_spans.append(None)
             else:
                 e_start, e_end = r["entity_span"]
-                entity_spans.append((prompt_start + e_start, prompt_start + e_end))
+                entity_spans.append((statement_span[0] + e_start, statement_span[0] + e_end))
 
         tokenized = tokenizer(
             prompts,
