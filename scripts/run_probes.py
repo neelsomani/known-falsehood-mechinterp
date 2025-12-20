@@ -1,6 +1,13 @@
 import argparse
 import csv
+import os
+import time
 from pathlib import Path
+
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 import numpy as np
 import torch
@@ -9,9 +16,10 @@ try:
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import roc_auc_score
     from sklearn.preprocessing import StandardScaler
+    from joblib import Parallel, delayed
 except ImportError as exc:
     raise SystemExit(
-        "Missing scikit-learn. Install with: pip install scikit-learn"
+        "Missing dependencies. Install with: pip install scikit-learn joblib"
     ) from exc
 
 
@@ -66,23 +74,6 @@ def build_task_indices(ids: list[str], data_by_id: dict[str, dict[str, str]], ta
     return np.array(indices, dtype=np.int64), np.array(labels, dtype=np.int64)
 
 
-def fit_and_score(X_train, y_train, X_test, y_test, seed: int) -> float:
-    scaler = StandardScaler(with_mean=True, with_std=True)
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-
-    clf = LogisticRegression(
-        penalty="l2",
-        solver="saga",
-        max_iter=2000,
-        random_state=seed,
-        n_jobs=-1,
-    )
-    clf.fit(X_train, y_train)
-    probs = clf.predict_proba(X_test)[:, 1]
-    return roc_auc_score(y_test, probs)
-
-
 def save_cache(path: Path, scaler: StandardScaler, clf: LogisticRegression) -> None:
     np.savez(
         path,
@@ -94,20 +85,73 @@ def save_cache(path: Path, scaler: StandardScaler, clf: LogisticRegression) -> N
     )
 
 
-def score_with_cache(path: Path, X_test: np.ndarray, y_test: np.ndarray) -> float:
+def score_with_cache(path: Path, X_test_scaled: np.ndarray, y_test: np.ndarray) -> float:
     data = np.load(path)
-    mean = data["mean"]
-    scale = data["scale"]
     coef = data["coef"]
     intercept = data["intercept"]
     classes = data["classes"]
     if classes.shape[0] != 2 or classes[0] != 0 or classes[1] != 1:
         raise ValueError(f"Unexpected classes in cache: {classes}")
 
-    X_test = (X_test - mean) / scale
-    logits = X_test @ coef.T + intercept
+    logits = X_test_scaled @ coef.T + intercept
     probs = 1.0 / (1.0 + np.exp(-logits))
     return roc_auc_score(y_test, probs.ravel())
+
+
+def run_one(
+    task: str,
+    layer: int,
+    pos: int,
+    train_acts: np.ndarray,
+    eval_acts: np.ndarray,
+    train_idx: np.ndarray,
+    y_train: np.ndarray,
+    eval_idx: np.ndarray,
+    y_eval: np.ndarray,
+    seeds: list[int],
+    cache_root: Path | None,
+) -> dict[str, object]:
+    X_train = train_acts[train_idx, layer, pos, :].astype(np.float32, copy=False)
+    X_test = eval_acts[eval_idx, layer, pos, :].astype(np.float32, copy=False)
+
+    scaler = StandardScaler(with_mean=True, with_std=True)
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    scores = []
+    for seed in seeds:
+        cache_path = None
+        if cache_root is not None:
+            cache_path = cache_root / f"{task}_L{layer}_P{pos}_S{seed}.npz"
+
+        if cache_path is not None and cache_path.exists():
+            auc = score_with_cache(cache_path, X_test_scaled, y_eval)
+        else:
+            clf = LogisticRegression(
+                penalty="l2",
+                solver="lbfgs",
+                max_iter=500,
+                random_state=seed,
+                n_jobs=1,
+            )
+            clf.fit(X_train_scaled, y_train)
+            probs = clf.predict_proba(X_test_scaled)[:, 1]
+            auc = roc_auc_score(y_eval, probs)
+            if cache_path is not None:
+                save_cache(cache_path, scaler, clf)
+        scores.append(auc)
+
+    scores = np.array(scores, dtype=np.float64)
+    return {
+        "task": task,
+        "layer": layer,
+        "position": "entity" if pos == 0 else "final",
+        "mean_auroc": float(scores.mean()),
+        "std_auroc": float(scores.std(ddof=0)),
+        "n_seeds": len(scores),
+        "n_train": len(y_train),
+        "n_test": len(y_eval),
+    }
 
 
 def main() -> None:
@@ -141,6 +185,12 @@ def main() -> None:
         default="dataset/probe_aurocs.csv",
         help="Output CSV with AUROC by layer/position/task.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=96,
+        help="Number of parallel workers for probe fits.",
+    )
     args = parser.parse_args()
 
     train_acts, train_ids = load_activations(Path(args.train_acts))
@@ -155,6 +205,26 @@ def main() -> None:
 
     n_layers = train_acts.shape[1]
     n_positions = train_acts.shape[2]
+
+    train_acts = np.ascontiguousarray(train_acts, dtype=np.float32)
+    eval_acts = np.ascontiguousarray(eval_acts, dtype=np.float32)
+    memmap_root = Path(args.cache_dir) if args.cache_dir else Path("dataset/probe_cache")
+    memmap_dir = memmap_root / "_memmap"
+    memmap_dir.mkdir(parents=True, exist_ok=True)
+    train_mm_path = memmap_dir / "train_acts.npy"
+    eval_mm_path = memmap_dir / "eval_acts.npy"
+
+    def ensure_memmap(path: Path, array: np.ndarray) -> None:
+        if path.exists():
+            existing = np.load(path, mmap_mode="r")
+            if existing.shape == array.shape and existing.dtype == array.dtype:
+                return
+        np.save(path, array)
+
+    ensure_memmap(train_mm_path, train_acts)
+    ensure_memmap(eval_mm_path, eval_acts)
+    train_acts = np.load(train_mm_path, mmap_mode="r")
+    eval_acts = np.load(eval_mm_path, mmap_mode="r")
 
     cache_root = Path(args.cache_dir) if args.cache_dir and not args.no_cache else None
     if cache_root is not None:
@@ -172,47 +242,29 @@ def main() -> None:
                 continue
             raise ValueError(f"Need both classes present for task {task}.")
 
-        for layer in range(n_layers):
-            for pos in range(n_positions):
-                X_train = train_acts[train_idx, layer, pos, :].astype(np.float32, copy=False)
-                X_test = eval_acts[eval_idx, layer, pos, :].astype(np.float32, copy=False)
-                scores = []
-                for seed in seeds:
-                    cache_path = None
-                    if cache_root is not None:
-                        cache_path = cache_root / f"{task}_L{layer}_P{pos}_S{seed}.npz"
-                    if cache_path is not None and cache_path.exists():
-                        auc = score_with_cache(cache_path, X_test, y_eval)
-                    else:
-                        scaler = StandardScaler(with_mean=True, with_std=True)
-                        X_train_scaled = scaler.fit_transform(X_train)
-                        X_test_scaled = scaler.transform(X_test)
-                        clf = LogisticRegression(
-                            penalty="l2",
-                            solver="saga",
-                            max_iter=2000,
-                            random_state=seed,
-                            n_jobs=-1,
-                        )
-                        clf.fit(X_train_scaled, y_train)
-                        probs = clf.predict_proba(X_test_scaled)[:, 1]
-                        auc = roc_auc_score(y_eval, probs)
-                        if cache_path is not None:
-                            save_cache(cache_path, scaler, clf)
-                    scores.append(auc)
-                scores = np.array(scores, dtype=np.float64)
-                rows_out.append(
-                    {
-                        "task": task,
-                        "layer": layer,
-                        "position": "entity" if pos == 0 else "final",
-                        "mean_auroc": float(scores.mean()),
-                        "std_auroc": float(scores.std(ddof=0)),
-                        "n_seeds": len(scores),
-                        "n_train": len(y_train),
-                        "n_test": len(y_eval),
-                    }
-                )
+        jobs = [(layer, pos) for layer in range(n_layers) for pos in range(n_positions)]
+        n_workers = min(args.workers, os.cpu_count() or 1)
+        print(f"Running {len(jobs)} probes for task {task} on {n_workers} workers.")
+        task_start = time.time()
+        rows_task = Parallel(n_jobs=n_workers, backend="loky", verbose=10)(
+            delayed(run_one)(
+                task,
+                layer,
+                pos,
+                train_acts,
+                eval_acts,
+                train_idx,
+                y_train,
+                eval_idx,
+                y_eval,
+                seeds,
+                cache_root,
+            )
+            for (layer, pos) in jobs
+        )
+        rows_out.extend(rows_task)
+        elapsed = (time.time() - task_start) / 60.0
+        print(f"Finished task {task} in {elapsed:.1f}m.")
 
     out_path = Path(args.out)
     fieldnames = [
