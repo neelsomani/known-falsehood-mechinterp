@@ -48,7 +48,20 @@ Capture residual stream activations at the entity/object token and final token:
 ## Run probes
 
 Train linear probes on residual stream activations and evaluate on the held-out split.
-This runs logistic regression probes per layer and per position (entity vs final token) for Tasks A/B/C from `docs/AGENTS.md`,
+
+* **Task A (core stance; primary claim):**
+declared-true(X_true) vs declared-false(X_true)
+→ tests pure epistemic stance
+
+* Task B (generalization):
+declared-true(X_false) vs declared-false(X_false)
+→ tests whether the same stance representation applies when the proposition contradicts world knowledge
+
+* Task C (control):
+X_false vs declared-false(X_false)
+→ wrapper detection only
+
+This runs logistic regression probes per layer and per position (entity vs final token) for Tasks A/B/C,
 and reports mean AUROC across 3 seeds.
 
 ```bash
@@ -56,3 +69,30 @@ python scripts/run_probes.py
 ```
 
 Outputs `dataset/probe_aurocs.csv` with AUROC by task, layer, and position. Note: the bare condition (T_BARE) is included in both train and test so Task C (bare vs declared-false on X_false) is evaluable. Template disjointness applies to the paired TRUE/FALSE templates.
+
+## Extract stance direction (Step 5)
+
+Select the best layer/position using the max `TaskA - TaskC` gap (or earliest saturation) and convert a cached probe back into activation space:
+
+```bash
+python scripts/extract_stance_direction.py \
+  --cache-dir dataset/probe_cache \
+  --auto-select \
+  --metrics-csv dataset/probe_aurocs.csv \
+  --seed 0 \
+  --out dataset/stance_direction.npz
+```
+
+Optional: prefer the earliest layer where Task A saturates:
+
+```bash
+python scripts/extract_stance_direction.py \
+  --cache-dir dataset/probe_cache \
+  --auto-select \
+  --earliest-saturation \
+  --metrics-csv dataset/probe_aurocs.csv \
+  --seed 0 \
+  --out dataset/stance_direction.npz
+```
+
+This writes a normalized direction `w` (and `w_raw`) plus metadata to `dataset/stance_direction.npz`.
