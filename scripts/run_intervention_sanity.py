@@ -50,6 +50,31 @@ def make_projection_ablation_hook(spec: InterventionSpec):
     return hook
 
 
+def parse_layer_spec(layer_spec: str, num_layers: int) -> list[int]:
+    if layer_spec.startswith("top:"):
+        count = int(layer_spec.split(":", 1)[1])
+        if count <= 0:
+            raise ValueError("top:N must be positive.")
+        start = max(0, num_layers - count)
+        return list(range(start, num_layers))
+    if layer_spec.startswith("range:"):
+        bounds = layer_spec.split(":", 1)[1]
+        start_s, end_s = bounds.split("..", 1)
+        start = int(start_s)
+        end = int(end_s)
+        if start < 0 or end < 0 or start >= num_layers or end > num_layers:
+            raise ValueError("Layer range out of bounds.")
+        if start >= end:
+            raise ValueError("Layer range must be start < end.")
+        return list(range(start, end))
+    if layer_spec.startswith("from:"):
+        start = int(layer_spec.split(":", 1)[1])
+        if start < 0 or start >= num_layers:
+            raise ValueError("Layer start out of bounds.")
+        return list(range(start, num_layers))
+    return [int(layer_spec)]
+
+
 def make_capture_hook(container: dict, key: str, token_index: int):
     def hook(module, inputs, outputs):
         if isinstance(outputs, tuple):
@@ -110,6 +135,14 @@ def main() -> None:
     ap.add_argument("--prompts-jsonl", type=Path, required=True)
     ap.add_argument("--w", default="dataset/stance_direction.npz")
     ap.add_argument("--layer", type=int, default=15)
+    ap.add_argument(
+        "--layer-spec",
+        default=None,
+        help=(
+            "Override --layer with multiple layers. Formats: "
+            "top:N (last N layers), from:K (layers K..L-1), range:A..B (A..B-1), or single int."
+        ),
+    )
     ap.add_argument("--alpha", type=float, default=1.0)
     ap.add_argument("--dtype", choices=["float16", "bfloat16"], default="float16")
     ap.add_argument("--device", default="cuda")
@@ -137,6 +170,7 @@ def main() -> None:
         trust_remote_code=True,
     )
     model.eval()
+    num_layers = len(model.model.layers)
 
     w = load_w(Path(args.w), device=model.device, dtype=dtype)
 
@@ -168,6 +202,8 @@ def main() -> None:
         last_tok = input_ids.shape[1] - 1
         if args.use_last_token:
             tok_idx = last_tok
+        layer_spec = args.layer_spec if args.layer_spec is not None else str(args.layer)
+        layers = parse_layer_spec(layer_spec, num_layers)
 
         gold_idx = pick_gold_index(choices, label)
 
@@ -183,23 +219,28 @@ def main() -> None:
         base_proj = torch.matmul(base_cache["last"], w).item()
 
         ablate_cache = {}
-        ablate_hook = model.model.layers[args.layer].register_forward_hook(
-            make_projection_ablation_hook(
-                InterventionSpec(
-                    layer=args.layer,
-                    token_index=tok_idx,
-                    alpha=args.alpha,
-                    w=w,
+        ablate_handles = []
+        for layer_idx in layers:
+            ablate_handles.append(
+                model.model.layers[layer_idx].register_forward_hook(
+                    make_projection_ablation_hook(
+                        InterventionSpec(
+                            layer=layer_idx,
+                            token_index=tok_idx,
+                            alpha=args.alpha,
+                            w=w,
+                        )
+                    )
                 )
             )
-        )
         ablate_capture = model.model.layers[args.layer].register_forward_hook(
             make_capture_hook(ablate_cache, "last", last_tok)
         )
         with torch.no_grad():
             ablate_out = model(input_ids=input_ids)
         ablate_capture.remove()
-        ablate_hook.remove()
+        for handle in ablate_handles:
+            handle.remove()
 
         ablate_logits = ablate_out.logits[:, -1, :]
         ablate_margin = compute_margin(ablate_logits[:, choice_token_ids], gold_idx)
@@ -210,6 +251,7 @@ def main() -> None:
                 "id": ex.get("id"),
                 "alpha": args.alpha,
                 "layer": args.layer,
+                "layer_spec": layer_spec,
                 "statement_token_index": tok_idx,
                 "last_token_index": last_tok,
                 "margin_base": base_margin,
