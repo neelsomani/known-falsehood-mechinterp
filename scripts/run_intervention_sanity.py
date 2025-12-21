@@ -75,6 +75,20 @@ def parse_layer_spec(layer_spec: str, num_layers: int) -> list[int]:
     return [int(layer_spec)]
 
 
+def parse_capture_layers(value: str, num_layers: int) -> list[int]:
+    items = [v.strip() for v in value.split(",") if v.strip()]
+    layers = []
+    for item in items:
+        if item == "last":
+            layers.append(num_layers - 1)
+        else:
+            layers.append(int(item))
+    for layer in layers:
+        if layer < 0 or layer >= num_layers:
+            raise ValueError("Capture layer out of bounds.")
+    return sorted(set(layers))
+
+
 def make_capture_hook(container: dict, key: str, token_index: int):
     def hook(module, inputs, outputs):
         if isinstance(outputs, tuple):
@@ -143,6 +157,11 @@ def main() -> None:
             "top:N (last N layers), from:K (layers K..L-1), range:A..B (A..B-1), or single int."
         ),
     )
+    ap.add_argument(
+        "--capture-layers",
+        default="15,last",
+        help="Comma-separated layers to capture projections at (e.g., 15,last).",
+    )
     ap.add_argument("--alpha", type=float, default=1.0)
     ap.add_argument("--dtype", choices=["float16", "bfloat16"], default="float16")
     ap.add_argument("--device", default="cuda")
@@ -182,6 +201,7 @@ def main() -> None:
     records = records[: args.max_examples]
 
     outputs = []
+    capture_layers = parse_capture_layers(args.capture_layers, num_layers)
     for ex in records:
         prompt = ex["prompt"]
         tok_idx = int(ex["statement_final_token_index"])
@@ -208,15 +228,25 @@ def main() -> None:
         gold_idx = pick_gold_index(choices, label)
 
         base_cache = {}
-        base_hook = model.model.layers[args.layer].register_forward_hook(
-            make_capture_hook(base_cache, "last", last_tok)
-        )
+        base_handles = []
+        for layer_idx in capture_layers:
+            base_cache[layer_idx] = {}
+            base_handles.append(
+                model.model.layers[layer_idx].register_forward_hook(
+                    make_capture_hook(base_cache[layer_idx], "last", last_tok)
+                )
+            )
         with torch.no_grad():
             base_out = model(input_ids=input_ids)
-        base_hook.remove()
+        for handle in base_handles:
+            handle.remove()
         base_logits = base_out.logits[:, -1, :]
         base_margin = compute_margin(base_logits[:, choice_token_ids], gold_idx)
-        base_proj = torch.matmul(base_cache["last"], w).item()
+        base_proj = {}
+        for layer_idx in capture_layers:
+            act = base_cache[layer_idx]["last"]
+            w_dev = w.to(act.device)
+            base_proj[str(layer_idx)] = torch.matmul(act, w_dev).item()
 
         ablate_cache = {}
         ablate_handles = []
@@ -233,18 +263,28 @@ def main() -> None:
                     )
                 )
             )
-        ablate_capture = model.model.layers[args.layer].register_forward_hook(
-            make_capture_hook(ablate_cache, "last", last_tok)
-        )
+        ablate_handles_capture = []
+        for layer_idx in capture_layers:
+            ablate_cache[layer_idx] = {}
+            ablate_handles_capture.append(
+                model.model.layers[layer_idx].register_forward_hook(
+                    make_capture_hook(ablate_cache[layer_idx], "last", last_tok)
+                )
+            )
         with torch.no_grad():
             ablate_out = model(input_ids=input_ids)
-        ablate_capture.remove()
+        for handle in ablate_handles_capture:
+            handle.remove()
         for handle in ablate_handles:
             handle.remove()
 
         ablate_logits = ablate_out.logits[:, -1, :]
         ablate_margin = compute_margin(ablate_logits[:, choice_token_ids], gold_idx)
-        ablate_proj = torch.matmul(ablate_cache["last"], w).item()
+        ablate_proj = {}
+        for layer_idx in capture_layers:
+            act = ablate_cache[layer_idx]["last"]
+            w_dev = w.to(act.device)
+            ablate_proj[str(layer_idx)] = torch.matmul(act, w_dev).item()
 
         outputs.append(
             {
@@ -252,6 +292,7 @@ def main() -> None:
                 "alpha": args.alpha,
                 "layer": args.layer,
                 "layer_spec": layer_spec,
+                "capture_layers": capture_layers,
                 "statement_token_index": tok_idx,
                 "last_token_index": last_tok,
                 "margin_base": base_margin,
@@ -259,7 +300,9 @@ def main() -> None:
                 "delta_margin": ablate_margin - base_margin,
                 "proj_base": base_proj,
                 "proj_ablate": ablate_proj,
-                "delta_proj": ablate_proj - base_proj,
+                "delta_proj": {
+                    layer: ablate_proj[layer] - base_proj[layer] for layer in base_proj
+                },
             }
         )
 
@@ -269,14 +312,21 @@ def main() -> None:
             f.write(json.dumps(row) + "\n")
 
     deltas = [row["delta_margin"] for row in outputs]
-    proj_deltas = [row["delta_proj"] for row in outputs]
+    proj_deltas_by_layer = {str(layer): [] for layer in capture_layers}
+    for row in outputs:
+        for layer, delta in row["delta_proj"].items():
+            proj_deltas_by_layer[layer].append(delta)
     mean_margin = float(sum(deltas) / max(1, len(deltas)))
     mean_abs_margin = float(sum(abs(d) for d in deltas) / max(1, len(deltas)))
-    mean_proj = float(sum(proj_deltas) / max(1, len(proj_deltas)))
-    mean_abs_proj = float(sum(abs(d) for d in proj_deltas) / max(1, len(proj_deltas)))
     print(f"n={len(outputs)}")
     print(f"delta_margin mean={mean_margin:.6f} mean_abs={mean_abs_margin:.6f}")
-    print(f"delta_proj mean={mean_proj:.6f} mean_abs={mean_abs_proj:.6f}")
+    for layer in capture_layers:
+        deltas_layer = proj_deltas_by_layer[str(layer)]
+        mean_proj = float(sum(deltas_layer) / max(1, len(deltas_layer)))
+        mean_abs_proj = float(sum(abs(d) for d in deltas_layer) / max(1, len(deltas_layer)))
+        print(
+            f"delta_proj layer={layer} mean={mean_proj:.6f} mean_abs={mean_abs_proj:.6f}"
+        )
 
 
 if __name__ == "__main__":
