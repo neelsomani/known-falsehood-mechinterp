@@ -64,54 +64,9 @@ python scripts/run_probes.py
 
 Outputs `dataset/probe_aurocs.csv` with AUROC by task, layer, and position. Note: the bare condition (T_BARE) is included in both train and test so Task C (bare vs declared-false on X_false) is evaluable. Template disjointness applies to the paired TRUE/FALSE templates.
 
-## Extract stance direction
+## Intervention prompts
 
-Select the best layer/position using the max `TaskA - TaskC` gap (or earliest saturation) and convert a cached probe back into activation space:
-
+Build prompts with statement-final token indices:
 ```bash
-python scripts/extract_stance_direction.py \
-  --cache-dir dataset/probe_cache \
-  --auto-select \
-  --metrics-csv dataset/probe_aurocs.csv \
-  --seed 0 \
-  --out dataset/stance_direction.npz \
-  --sanity-check
+python scripts/build_intervention_prompts.py
 ```
-
-This writes a normalized direction `w` (and `w_raw`) plus metadata to `dataset/stance_direction.npz`.
-
-## Intervention eval
-
-This applies the stance-direction ablation at the statement-final token position during the prompt prefill,
-then scores forced-choice accuracy on truth-judgment and consequence tasks.
-
-1) Build prompts with statement-final token indices:
-   ```bash
-   python scripts/build_intervention_prompts.py \
-     --task all \
-     --out dataset/intervention_prompts.jsonl
-   ```
-
-2) Run the stance-direction ablation sweep:
-   ```bash
-   python scripts/run_intervention_eval.py \
-     --prompts-jsonl dataset/intervention_prompts.jsonl \
-     --w dataset/stance_direction.npz \
-     --layer 15 \
-     --alphas 0,0.25,0.5,0.75,1.0,1.5,2.0 \
-     --direction stance
-   ```
-
-3) Run a random-direction control (orthogonalized to the stance direction):
-   ```bash
-   python scripts/run_intervention_eval.py \
-     --prompts-jsonl dataset/intervention_prompts.jsonl \
-     --w dataset/stance_direction.npz \
-     --layer 15 \
-     --alphas 0,0.25,0.5,0.75,1.0,1.5,2.0 \
-     --direction random-orthogonal
-   ```
-
-Outputs:
-* `dataset/intervention_results.jsonl` (per-example predictions and margins)
-* `dataset/intervention_flips.jsonl` (examples that flip from correct at alpha=0 to incorrect)

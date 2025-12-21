@@ -1,5 +1,5 @@
 """
-Interactive terminal chat, matching the setup described in docs/AGENTS.md.
+Debug script: Interactive terminal chat, matching the setup described in docs/AGENTS.md.
 
 Usage:
   python scripts/llama_interactive.py --model meta-llama/Llama-3.1-70B-Instruct

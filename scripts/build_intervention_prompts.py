@@ -128,6 +128,97 @@ def build_consequence_prompts(
     return prompts
 
 
+def paired_template_id(template_id: str) -> str | None:
+    if template_id.startswith("T_TRUE_"):
+        return template_id.replace("T_TRUE_", "T_FALSE_", 1)
+    if template_id.startswith("T_FALSE_"):
+        return template_id.replace("T_FALSE_", "T_TRUE_", 1)
+    return None
+
+
+def build_consequence_pairs(
+    tokenizer,
+    system: str,
+    splits_path: Path,
+    data_path: Path,
+    consequences_path: Path,
+    limit_total: int | None,
+    seed: int,
+) -> list[dict]:
+    train_facts, train_templates = load_splits(splits_path)
+    consequences = load_consequences(consequences_path)
+    rows = []
+    with data_path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row["stance_label"] not in {"declared_true", "declared_false"}:
+                continue
+            base_fact = row["base_fact"]
+            template_id = row["template_id"]
+            if base_fact not in train_facts or template_id not in train_templates:
+                continue
+            rows.append(row)
+
+    by_key = {}
+    for row in rows:
+        key = (row["base_fact"], row["proposition_id"], row["template_id"])
+        by_key[key] = row
+
+    pairs = {}
+    for row in rows:
+        template_id = row["template_id"]
+        partner_template = paired_template_id(template_id)
+        if not partner_template:
+            continue
+        key = (row["base_fact"], row["proposition_id"], partner_template)
+        partner = by_key.get(key)
+        if not partner:
+            continue
+        pair_ids = sorted([template_id, partner_template])
+        pair_id = f"{row['base_fact']}::{row['proposition_id']}::{pair_ids[0]}::{pair_ids[1]}"
+        pairs.setdefault(pair_id, []).append(row)
+
+    pair_ids = list(pairs.keys())
+    random.seed(seed)
+    random.shuffle(pair_ids)
+    if limit_total is not None:
+        pair_ids = pair_ids[:limit_total]
+
+    prompts = []
+    for pair_id in pair_ids:
+        for row in pairs[pair_id]:
+            key = (row["base_fact"], row["proposition_id"], row["stance_label"])
+            conseq = consequences.get(key)
+            if not conseq:
+                continue
+            consequence_prompt = conseq["consequence_prompt"]
+            if consequence_prompt:
+                consequence_prompt = consequence_prompt[0].lower() + consequence_prompt[1:]
+            full_question = (
+                f"\"{row['statement']}\" According to the assumption above, {consequence_prompt}"
+            )
+            full_prompt = build_prompt(
+                tokenizer,
+                system,
+                full_question,
+                add_generation_prompt=True,
+            )
+            prompts.append(
+                {
+                    "pair_id": pair_id,
+                    "stance_label": row["stance_label"],
+                    "prompt": full_prompt,
+                    "statement": row["statement"],
+                    "label": conseq["expected_answer"],
+                    "choices": [" A", " B"],
+                    "base_fact": row["base_fact"],
+                    "proposition_id": row["proposition_id"],
+                    "template_id": row["template_id"],
+                }
+            )
+    return prompts
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build prompts JSONL with statement-final token indices for interventions."
@@ -138,7 +229,11 @@ def main() -> None:
         default=TRUTH_SYSTEM_PROMPT,
         help="System prompt for building chat prompts.",
     )
-    parser.add_argument("--task", choices=["truth", "consequence", "all"], default="all")
+    parser.add_argument(
+        "--task",
+        choices=["truth", "consequence", "consequence-pairs", "all"],
+        default="all",
+    )
     parser.add_argument("--facts", default="dataset/facts.csv")
     parser.add_argument("--splits", default="dataset/splits.json")
     parser.add_argument("--data", default="dataset/data.csv")
@@ -169,6 +264,18 @@ def main() -> None:
     if args.task in {"consequence", "all"}:
         prompts.extend(
             build_consequence_prompts(
+                tokenizer,
+                args.system,
+                Path(args.splits),
+                Path(args.data),
+                Path(args.consequences),
+                args.limit_consequence,
+                args.seed,
+            )
+        )
+    if args.task in {"consequence-pairs", "all"}:
+        prompts.extend(
+            build_consequence_pairs(
                 tokenizer,
                 args.system,
                 Path(args.splits),
