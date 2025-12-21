@@ -1,7 +1,61 @@
-# Pairwise Activation Patching for Epistemic Stance
+# Ablation studies
+
+## Directional ablation results
 
 The previous ablation experiments identified a direction that linearly separates declared-true and declared-false statements at the end of the statement span, but removing this direction did not reliably affect downstream consequence selection. Further analysis showed that perturbations at the statement token did not mediate into the final decision representation, and even aggressive multi-layer ablations at the decision token could be compensated by later computation. This suggests that the stance signal used for consequence selection may not align with a single global probe direction across prompt formats or token positions.
 
 To directly test whether epistemic stance is causally represented at the site that drives the model’s decision, we adopt a pairwise activation-patching approach. For each underlying consequence question, we construct two prompts that are identical except for epistemic stance (declared-true vs. declared-false). We run both prompts and capture the hidden state at a chosen layer and at the final prompt token, which is the representation from which the A/B logits are computed. We then perform a counterfactual intervention by overwriting the hidden state from one stance condition with the hidden state from the other, while keeping the prompt text fixed. If the model’s behavior shifts toward the patched stance, this provides direct causal evidence that the internal representation at that site mediates how epistemic stance influences downstream reasoning.
 
 This approach avoids assumptions about global linear directions or cross-prompt alignment and instead tests the full high-dimensional representation induced by stance under identical conditions. Because the intervention is localized to a specific layer and token position and swaps only the internal state associated with epistemic stance, it constitutes a strong mechanistic test of whether stance is a causal control variable for premise-conditioned inference in the model.
+
+## Behavioral effects of delta-direction ablation
+
+We evaluated the effect of delta-direction ablation on both truth judgments and premise-conditioned consequence reasoning. The intervention removed, at the final decision site (last layer, last prompt token), the projection of the hidden state along the per-pair stance difference
+Δ = h_declared-true − h_declared-false, normalized and applied with α = 1.0.
+
+### Truth task
+
+Performance on the truth classification task was unchanged by the intervention.
+
+Before ablation:
+
+* True accuracy: 0.975 (195/200)
+* False accuracy: 0.955 (191/200)
+* Overall accuracy: 0.965 (386/400)
+* Unknown rate: 0.00%
+
+After ablation:
+
+* True accuracy: 0.975 (195/200)
+* False accuracy: 0.955 (191/200)
+* Overall accuracy: 0.965 (386/400)
+* Unknown rate: 0.00%
+
+Thus, delta-direction ablation does not disrupt the model’s ability to judge factual truth or parse negation in isolation.
+
+### Consequence task
+
+Performance on the premise-conditioned consequence task showed no meaningful degradation under ablation.
+
+Before ablation:
+
+* Overall accuracy: 0.666 (853/1280)
+* Unparsed outputs: 0.00%
+
+After ablation:
+
+* Overall accuracy: 0.662 (848/1280)
+* Unparsed outputs: 0.00%
+
+The difference corresponds to 5 examples out of 1280 and is within noise.
+
+Breakdowns by stance, proposition type, and template family likewise showed only minor fluctuations. No condition exhibited a systematic accuracy collapse following ablation.
+
+### Summary
+
+Delta-direction ablation at the final decision site leaves:
+
+* truth judgment accuracy unchanged
+* consequence-selection accuracy unchanged within noise
+
+This holds despite the fact that the same intervention produces large and systematic shifts in answer logits and margins.
