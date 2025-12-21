@@ -59,3 +59,9 @@ Delta-direction ablation at the final decision site leaves:
 * consequence-selection accuracy unchanged within noise
 
 This holds despite the fact that the same intervention produces large and systematic shifts in answer logits and margins.
+
+## Local delta-direction ablation across all layers
+
+For the layer-sweep experiments, we subsample the set of stance pairs to 150 examples rather than using the full dataset (≈600 pairs). Computing per-pair local deltas requires two forward passes per example per layer, making a full sweep prohibitively expensive (on the order of tens of hours). Because the goal of this sweep is to identify whether there exists a layer (or contiguous band of layers) at which removing the stance-conditioned internal difference measurably degrades premise-conditioned reasoning, a smaller but representative subset is sufficient. The intervention is strong and example-specific, so any genuine causal bottleneck should manifest as a clear accuracy drop even at this reduced scale. Once candidate layers are identified, we can rerun targeted experiments at those layers using the full dataset for confirmation.
+
+The layerwise results for a subset of the evaluation (300 rows) are included. The stance-conditioning bottleneck lives in layers ~30–45, with maximal causal impact around layer ~40.
