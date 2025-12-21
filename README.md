@@ -94,3 +94,19 @@ python scripts/run_behavioral_eval_ablation.py \
   --alpha 1.0 \
   --w dataset/stance_direction.npz
 ```
+
+## Compare local vs averaged delta directions
+
+If you have per-pair deltas saved from a layerwise run (e.g. `delta_layer_040.pt`),
+you can compare consequence accuracy under four conditions at a fixed layer:
+baseline (no ablation), per-example local delta, averaged delta, and random delta.
+
+```bash
+python scripts/run_avg_delta_eval.py \
+  --delta-pt delta_layer_040.pt \
+  --layer 40
+```
+
+This writes a JSON summary to `dataset/avg_delta_eval.json`.
+
+The results are stored in the `dataset` directory, including the resulting evaluation error with respect to each layer's ablation and the computed directions. You can use `scripts/analyze_delta_alignment.py` to observe the cosine similarity across examples.

@@ -64,4 +64,41 @@ This holds despite the fact that the same intervention produces large and system
 
 For the layer-sweep experiments, we subsample the set of stance pairs to 150 examples rather than using the full dataset (≈600 pairs). Computing per-pair local deltas requires two forward passes per example per layer, making a full sweep prohibitively expensive (on the order of tens of hours). Because the goal of this sweep is to identify whether there exists a layer (or contiguous band of layers) at which removing the stance-conditioned internal difference measurably degrades premise-conditioned reasoning, a smaller but representative subset is sufficient. The intervention is strong and example-specific, so any genuine causal bottleneck should manifest as a clear accuracy drop even at this reduced scale. Once candidate layers are identified, we can rerun targeted experiments at those layers using the full dataset for confirmation.
 
-The layerwise results for a subset of the evaluation (300 rows) are included. The stance-conditioning bottleneck lives in layers ~30–45, with maximal causal impact around layer ~40.
+The layerwise results for a subset of the evaluation (300 rows) are included. The stance-conditioning bottleneck lives in layers ~30–45, with maximal causal impact around layer ~40. The local deltas are generally in the same direction:
+
+{
+  "n": 150,
+  "cos_to_mean": {
+    "mean": 0.4237349331378937,
+    "std": 0.2707286775112152,
+    "p05": -0.10179489105939865,
+    "p50": 0.4580126404762268,
+    "p95": 0.780331015586853
+  },
+  "abs_cos_to_mean": {
+    "mean": 0.44999226927757263,
+    "std": 0.2243930697441101,
+    "p05": 0.08030397444963455,
+    "p50": 0.4580126404762268,
+    "p95": 0.780331015586853
+  },
+  "pairwise_cos": {
+    "mean": 0.1788312941789627,
+    "std": 0.34985262155532837,
+    "p05": -0.3784124255180359,
+    "p50": 0.15232263505458832,
+    "p95": 0.760366678237915
+  },
+  "pca_var_explained_top10": [
+    0.39093324542045593,
+    0.23926103115081787,
+    0.09603725373744965,
+    0.0657278448343277,
+    0.06230822578072548,
+    0.045001525431871414,
+    0.03697717934846878,
+    0.024565577507019043,
+    0.023927519097924232,
+    0.015260549262166023
+  ]
+}
