@@ -11,13 +11,6 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
-@dataclass(frozen=True)
-class PatchSpec:
-    layer: int
-    token_index: int
-    source_state: torch.Tensor
-
-
 def make_capture_hook(container: dict, key: str, token_index: int):
     def hook(module, inputs, outputs):
         hs = outputs[0] if isinstance(outputs, tuple) else outputs
@@ -29,7 +22,14 @@ def make_capture_hook(container: dict, key: str, token_index: int):
     return hook
 
 
-def make_patch_hook(spec: PatchSpec):
+@dataclass(frozen=True)
+class AblateSpec:
+    token_index: int
+    alpha: float
+    direction: torch.Tensor
+
+
+def make_delta_ablate_hook(spec: AblateSpec):
     def hook(module, inputs, outputs):
         if isinstance(outputs, tuple):
             hs = outputs[0]
@@ -40,8 +40,13 @@ def make_patch_hook(spec: PatchSpec):
 
         tok = spec.token_index
         if 0 <= tok < hs.shape[1]:
-            src = spec.source_state.to(hs.device)
-            hs[:, tok, :] = src
+            v = hs[:, tok, :]
+            d = spec.direction.to(v.device)
+            if d.ndim == 2:
+                d = d[0]
+            d = d / (d.norm() + 1e-8)
+            proj = torch.matmul(v, d)
+            hs[:, tok, :] = v - spec.alpha * proj.unsqueeze(-1) * d.unsqueeze(0)
 
         if rest is None:
             return hs
@@ -92,8 +97,17 @@ def load_pairs(path: Path) -> dict[str, dict[str, dict]]:
     return pairs
 
 
+def run_and_capture(model, layer_module, input_ids: torch.Tensor, tok_idx: int) -> torch.Tensor:
+    cache = {}
+    handle = layer_module.register_forward_hook(make_capture_hook(cache, "x", tok_idx))
+    with torch.no_grad():
+        _ = model(input_ids=input_ids)
+    handle.remove()
+    return cache["x"]
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Activation patching for stance pairs.")
+    ap = argparse.ArgumentParser(description="Delta-direction ablation for stance pairs.")
     ap.add_argument("--model", default="meta-llama/Llama-3.1-70B-Instruct")
     ap.add_argument(
         "--pairs-jsonl",
@@ -107,10 +121,26 @@ def main() -> None:
         choices=["true-to-false", "false-to-true", "both"],
         default="both",
     )
+    ap.add_argument(
+        "--alpha",
+        type=float,
+        default=1.0,
+        help="Strength of delta projection removal.",
+    )
+    ap.add_argument(
+        "--delta-mode",
+        choices=["per-pair", "global"],
+        default="per-pair",
+        help="Use per-pair delta or a global average delta.",
+    )
     ap.add_argument("--dtype", choices=["float16", "bfloat16"], default="bfloat16")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--max-pairs", type=int, default=50)
-    ap.add_argument("--out", type=Path, default=Path("dataset/intervention_patching.jsonl"))
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=Path("dataset/intervention_delta_ablation.jsonl"),
+    )
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -131,6 +161,42 @@ def main() -> None:
     random.shuffle(pair_ids)
     pair_ids = pair_ids[: args.max_pairs]
 
+    layer_idx = args.layer
+    if str(layer_idx).lower() == "last":
+        layer_idx = len(model.model.layers) - 1
+    layer_idx = int(layer_idx)
+
+    global_delta = None
+    if args.delta_mode == "global":
+        deltas = []
+        for pair_id in pair_ids:
+            pair = pairs[pair_id]
+            if "declared_true" not in pair or "declared_false" not in pair:
+                continue
+            true_row = pair["declared_true"]
+            false_row = pair["declared_false"]
+            if true_row["choices"] != false_row["choices"]:
+                continue
+            true_input = tokenizer(
+                true_row["prompt"],
+                return_tensors="pt",
+                add_special_tokens=False,
+            ).input_ids
+            false_input = tokenizer(
+                false_row["prompt"],
+                return_tensors="pt",
+                add_special_tokens=False,
+            ).input_ids
+            true_last = true_input.shape[1] - 1
+            false_last = false_input.shape[1] - 1
+            h_true = run_and_capture(model, model.model.layers[layer_idx], true_input, true_last)
+            h_false = run_and_capture(model, model.model.layers[layer_idx], false_input, false_last)
+            delta = (h_true - h_false).squeeze(0)
+            deltas.append(delta)
+        if not deltas:
+            raise ValueError("No valid pairs available to build global delta.")
+        global_delta = torch.stack(deltas, dim=0).mean(dim=0)
+
     outputs = []
     for pair_id in pair_ids:
         pair = pairs[pair_id]
@@ -149,18 +215,12 @@ def main() -> None:
             if source["choices"] != target["choices"]:
                 raise ValueError("Choice set mismatch within pair.")
 
-            source_input = tokenizer(
-                source["prompt"],
-                return_tensors="pt",
-                add_special_tokens=False,
-            ).input_ids
             target_input = tokenizer(
                 target["prompt"],
                 return_tensors="pt",
                 add_special_tokens=False,
             ).input_ids
 
-            source_last = source_input.shape[1] - 1
             target_last = target_input.shape[1] - 1
 
             choices = target["choices"]
@@ -172,19 +232,36 @@ def main() -> None:
             choice_token_ids = [ids[0] for ids in choice_token_ids]
             gold_idx = pick_gold_index(choices, target["label"])
 
-            layer_idx = args.layer
-            if str(layer_idx).lower() == "last":
-                layer_idx = len(model.model.layers) - 1
-            layer_idx = int(layer_idx)
-
-            source_cache = {}
-            source_hook = model.model.layers[layer_idx].register_forward_hook(
-                make_capture_hook(source_cache, "last", source_last)
-            )
-            with torch.no_grad():
-                _ = model(input_ids=source_input)
-            source_hook.remove()
-            source_state = source_cache["last"]
+            if args.delta_mode == "per-pair":
+                true_row = pair["declared_true"]
+                false_row = pair["declared_false"]
+                true_input = tokenizer(
+                    true_row["prompt"],
+                    return_tensors="pt",
+                    add_special_tokens=False,
+                ).input_ids
+                false_input = tokenizer(
+                    false_row["prompt"],
+                    return_tensors="pt",
+                    add_special_tokens=False,
+                ).input_ids
+                true_last = true_input.shape[1] - 1
+                false_last = false_input.shape[1] - 1
+                h_true = run_and_capture(
+                    model,
+                    model.model.layers[layer_idx],
+                    true_input,
+                    true_last,
+                )
+                h_false = run_and_capture(
+                    model,
+                    model.model.layers[layer_idx],
+                    false_input,
+                    false_last,
+                )
+                delta = (h_true - h_false).squeeze(0)
+            else:
+                delta = global_delta
 
             with torch.no_grad():
                 base_out = model(input_ids=target_input)
@@ -196,23 +273,23 @@ def main() -> None:
             base_correct = base_pred == gold_label
 
             patch_handle = model.model.layers[layer_idx].register_forward_hook(
-                make_patch_hook(
-                    PatchSpec(
-                        layer=layer_idx,
+                make_delta_ablate_hook(
+                    AblateSpec(
                         token_index=target_last,
-                        source_state=source_state,
+                        alpha=args.alpha,
+                        direction=delta,
                     )
                 )
             )
             with torch.no_grad():
-                patched_out = model(input_ids=target_input)
+                ablated_out = model(input_ids=target_input)
             patch_handle.remove()
 
-            patched_logits = patched_out.logits[:, -1, :]
-            patched_subset = patched_logits[:, choice_token_ids]
-            patched_margin = compute_margin(patched_subset, gold_idx)
-            patched_pred = pick_pred_label(patched_subset, choices)
-            patched_correct = patched_pred == gold_label
+            ablated_logits = ablated_out.logits[:, -1, :]
+            ablated_subset = ablated_logits[:, choice_token_ids]
+            ablated_margin = compute_margin(ablated_subset, gold_idx)
+            ablated_pred = pick_pred_label(ablated_subset, choices)
+            ablated_correct = ablated_pred == gold_label
 
             outputs.append(
                 {
@@ -220,14 +297,16 @@ def main() -> None:
                     "source_stance": source_stance,
                     "target_stance": target_stance,
                     "layer": layer_idx,
+                    "delta_mode": args.delta_mode,
+                    "alpha": args.alpha,
                     "base_margin": base_margin,
-                    "patched_margin": patched_margin,
-                    "delta_margin": patched_margin - base_margin,
+                    "ablated_margin": ablated_margin,
+                    "delta_margin": ablated_margin - base_margin,
                     "base_pred": base_pred,
-                    "patched_pred": patched_pred,
+                    "ablated_pred": ablated_pred,
                     "gold": gold_label,
                     "base_correct": base_correct,
-                    "patched_correct": patched_correct,
+                    "ablated_correct": ablated_correct,
                 }
             )
 

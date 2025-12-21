@@ -13,16 +13,21 @@ Truth/False/Unknown task:
   Unknown percent: 0.00% (0/400)
 
 Consequence task (train facts/templates):
-  Accuracy: 0.650 (416/640)
-  Unparsed percent: 0.00% (0/640)
+  Accuracy: 0.666 (853/1280)
+  Unparsed percent: 0.00% (0/1280)
+
 Consequence breakdown by template family:
-  declared_false(X_true) | family 1: acc 0.787 (126/160), unparsed 0.00% (0/160)
-  declared_true(X_false) | family 1: acc 0.631 (101/160), unparsed 0.00% (0/160)
-  declared_false(X_true) | family 2: acc 0.562 (90/160), unparsed 0.00% (0/160)
-  declared_true(X_false) | family 2: acc 0.619 (99/160), unparsed 0.00% (0/160)
+  declared_false(X_false) | family 1: acc 0.769 (123/160), unparsed 0.00% (0/160)
+  declared_false(X_true) | family 1: acc 0.806 (129/160), unparsed 0.00% (0/160)
+  declared_true(X_false) | family 1: acc 0.637 (102/160), unparsed 0.00% (0/160)
+  declared_true(X_true) | family 1: acc 0.706 (113/160), unparsed 0.00% (0/160)
+  declared_false(X_false) | family 2: acc 0.506 (81/160), unparsed 0.00% (0/160)
+  declared_false(X_true) | family 2: acc 0.556 (89/160), unparsed 0.00% (0/160)
+  declared_true(X_false) | family 2: acc 0.644 (103/160), unparsed 0.00% (0/160)
+  declared_true(X_true) | family 2: acc 0.706 (113/160), unparsed 0.00% (0/160)
 
 Final summary:
   Truth overall accuracy: 0.965
   Truth unknown percent: 0.00%
-  Consequence accuracy: 0.650
+  Consequence accuracy: 0.666
   Consequence unparsed percent: 0.00%
