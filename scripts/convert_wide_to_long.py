@@ -221,34 +221,60 @@ def convert(input_csv: Path, out_data_csv: Path, out_conseq_csv: Path, include_b
                     }
                 )
 
-            tf_df_conseq = (r.get("True Fact Declared False Consequence") or "").strip()
+            tf_df_conseq = (r.get("True Fact Consequence") or "").strip()
             tf_df_ans = (r.get("Expected True Fact Declared False Answer") or "").strip()
-            ff_dt_conseq = (r.get("False Fact Declared True Consequence") or "").strip()
+            tf_dt_ans = (r.get("Expected True Fact Declared True Answer") or "").strip()
+            ff_dt_conseq = (r.get("False Fact Consequence") or "").strip()
             ff_dt_ans = (r.get("Expected False Fact Declared True Answer") or "").strip()
+            ff_df_ans = (r.get("Expected False Fact Declared False Answer") or "").strip()
 
             _assert_ab("Expected True Fact Declared False Answer", tf_df_ans, base_fact)
+            _assert_ab("Expected True Fact Declared True Answer", tf_dt_ans, base_fact)
             _assert_ab("Expected False Fact Declared True Answer", ff_dt_ans, base_fact)
+            _assert_ab("Expected False Fact Declared False Answer", ff_df_ans, base_fact)
 
             if tf_df_conseq:
-                conseq_out.append(
-                    {
-                        "base_fact": base_fact,
-                        "proposition_id": prop_true,
-                        "stance_label": "declared_false",
-                        "consequence_prompt": tf_df_conseq,
-                        "expected_answer": tf_df_ans,
-                    }
-                )
+                if tf_df_ans:
+                    conseq_out.append(
+                        {
+                            "base_fact": base_fact,
+                            "proposition_id": prop_true,
+                            "stance_label": "declared_false",
+                            "consequence_prompt": tf_df_conseq,
+                            "expected_answer": tf_df_ans,
+                        }
+                    )
+                if tf_dt_ans:
+                    conseq_out.append(
+                        {
+                            "base_fact": base_fact,
+                            "proposition_id": prop_true,
+                            "stance_label": "declared_true",
+                            "consequence_prompt": tf_df_conseq,
+                            "expected_answer": tf_dt_ans,
+                        }
+                    )
             if ff_dt_conseq:
-                conseq_out.append(
-                    {
-                        "base_fact": base_fact,
-                        "proposition_id": prop_false,
-                        "stance_label": "declared_true",
-                        "consequence_prompt": ff_dt_conseq,
-                        "expected_answer": ff_dt_ans,
-                    }
-                )
+                if ff_dt_ans:
+                    conseq_out.append(
+                        {
+                            "base_fact": base_fact,
+                            "proposition_id": prop_false,
+                            "stance_label": "declared_true",
+                            "consequence_prompt": ff_dt_conseq,
+                            "expected_answer": ff_dt_ans,
+                        }
+                    )
+                if ff_df_ans:
+                    conseq_out.append(
+                        {
+                            "base_fact": base_fact,
+                            "proposition_id": prop_false,
+                            "stance_label": "declared_false",
+                            "consequence_prompt": ff_dt_conseq,
+                            "expected_answer": ff_df_ans,
+                        }
+                    )
 
     ids = [r["id"] for r in rows_out]
     if len(ids) != len(set(ids)):
