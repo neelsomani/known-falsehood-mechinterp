@@ -64,7 +64,11 @@ This holds despite the fact that the same intervention produces large and system
 
 For the layer-sweep experiments, we subsample the set of stance pairs to 150 examples rather than using the full dataset (≈600 pairs). Computing per-pair local deltas requires two forward passes per example per layer, making a full sweep prohibitively expensive (on the order of tens of hours). Because the goal of this sweep is to identify whether there exists a layer (or contiguous band of layers) at which removing the stance-conditioned internal difference measurably degrades premise-conditioned reasoning, a smaller but representative subset is sufficient. The intervention is strong and example-specific, so any genuine causal bottleneck should manifest as a clear accuracy drop even at this reduced scale. Once candidate layers are identified, we can rerun targeted experiments at those layers using the full dataset for confirmation.
 
-The layerwise results for a subset of the evaluation (300 rows) are included. The stance-conditioning bottleneck lives in layers ~30–45, with maximal causal impact around layer ~40. The local deltas are generally in the same direction:
+The layerwise results for a subset of the evaluation (300 rows) are included. The stance-conditioning bottleneck lives in layers ~30–45, with maximal causal impact around layer ~40.
+
+## Mean of local delta-direction ablation
+
+The local deltas are generally in the same direction:
 
 {
   "n": 150,
@@ -102,3 +106,34 @@ The layerwise results for a subset of the evaluation (300 rows) are included. Th
     0.015260549262166023
   ]
 }
+
+That suggests subtracting the mean:
+
+{
+  "layer": 40,
+  "alpha": 1.0,
+  "delta_pt": "dataset/delta_directions/delta_layer_040.pt",
+  "results": {
+    ...,
+    "local_delta": {
+      "acc": 0.5366666666666666,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "mean_delta": {
+      "acc": 0.6533333333333333,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "random_delta": {
+      "acc": 0.6766666666666666,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    }
+  }
+}
+
+Clearly it's not a 1D representation, though the 1D projection has some effect.

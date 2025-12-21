@@ -35,10 +35,14 @@ def make_delta_ablate_hook(spec: AblateSpec):
         if 0 <= tok < hs.shape[1]:
             v = hs[:, tok, :]
             d = spec.direction.to(device=v.device, dtype=v.dtype)
-            if d.ndim == 2:
-                d = d[0]
-            proj = torch.matmul(v, d)
-            hs[:, tok, :] = v - spec.alpha * proj.unsqueeze(-1) * d.unsqueeze(0)
+            if d.ndim == 1:
+                proj = torch.matmul(v, d)
+                hs[:, tok, :] = v - spec.alpha * proj.unsqueeze(-1) * d.unsqueeze(0)
+            else:
+                # d: [d_model, k], assumed orthonormal columns
+                coeffs = torch.matmul(v, d)
+                proj = torch.matmul(coeffs, d.t())
+                hs[:, tok, :] = v - spec.alpha * proj
 
         if rest is None:
             return hs
@@ -264,6 +268,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--layer", type=int, default=40)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
+        "--pca-ks",
+        default="1,2,3",
+        help="Comma-separated PCA subspace sizes to evaluate.",
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         default=Path("dataset/avg_delta_eval.json"),
@@ -283,10 +292,22 @@ def main() -> None:
     pair_ids = payload["pair_ids"]
     allowed_pairs = set(pair_ids)
 
-    mean_delta = deltas.mean(dim=0)
-    mean_delta = mean_delta / (mean_delta.norm() + 1e-8)
-    rand = torch.randn_like(mean_delta)
+    deltas_f = deltas.float()
+    mean_delta_f = deltas_f.mean(dim=0)
+    mean_delta_f = mean_delta_f / (mean_delta_f.norm() + 1e-8)
+    rand = torch.randn_like(mean_delta_f)
     rand = rand / (rand.norm() + 1e-8)
+
+    cos_to_mean = torch.matmul(deltas_f, mean_delta_f)
+    signs = torch.sign(cos_to_mean)
+    signs[signs == 0] = 1
+    deltas_aligned = deltas_f * signs.unsqueeze(1)
+    q = min(10, deltas_aligned.shape[0] - 1) if deltas_aligned.shape[0] > 1 else 1
+    if q == 1:
+        pca_basis = mean_delta_f.unsqueeze(1)
+    else:
+        _, _, V = torch.pca_lowrank(deltas_aligned, q=q, center=True)
+        pca_basis = V
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
@@ -319,7 +340,7 @@ def main() -> None:
         return per_pair_lookup.get(pair_id)
 
     def direction_mean(_row, _pair_id):
-        return mean_delta
+        return mean_delta_f
 
     def direction_random(_row, _pair_id):
         return rand
@@ -328,12 +349,31 @@ def main() -> None:
         return None
 
     results = {}
-    for name, provider in [
+    evaluations = [
         ("baseline", direction_none, False),
         ("local_delta", direction_local, True),
         ("mean_delta", direction_mean, True),
         ("random_delta", direction_random, True),
-    ]:
+    ]
+
+    pca_ks = []
+    for part in args.pca_ks.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        pca_ks.append(int(part))
+    for k in pca_ks:
+        max_k = pca_basis.shape[1]
+        if k <= 0 or k > max_k:
+            raise ValueError(f"Invalid PCA k={k}; available={max_k}")
+        basis = pca_basis[:, :k]
+
+        def direction_pca(_row, _pair_id, basis=basis):
+            return basis
+
+        evaluations.append((f"pca_k{k}", direction_pca, True))
+
+    for name, provider, requires_direction in evaluations:
         print(f"== {name} ==")
         metrics = run_consequence_eval(
             model,
