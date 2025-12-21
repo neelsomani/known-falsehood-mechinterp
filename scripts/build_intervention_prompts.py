@@ -244,7 +244,7 @@ def main() -> None:
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path("dataset/intervention_prompts.jsonl"),
+        default=None,
     )
     args = parser.parse_args()
 
@@ -289,12 +289,19 @@ def main() -> None:
     if not prompts:
         raise ValueError("No prompts generated.")
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    with args.out.open("w", encoding="utf-8") as f:
+    out_path = args.out
+    if out_path is None:
+        if args.task in {"consequence-pairs", "all"}:
+            out_path = Path("dataset/intervention_pairs.jsonl")
+        else:
+            out_path = Path("dataset/intervention_prompts.jsonl")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as f:
         for row in prompts:
             f.write(json.dumps(row) + "\n")
 
-    print(f"Wrote {len(prompts)} prompts to {args.out}")
+    print(f"Wrote {len(prompts)} prompts to {out_path}")
 
 
 if __name__ == "__main__":
