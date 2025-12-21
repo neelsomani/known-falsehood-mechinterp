@@ -64,9 +64,33 @@ python scripts/run_probes.py
 
 Outputs `dataset/probe_aurocs.csv` with AUROC by task, layer, and position. Note: the bare condition (T_BARE) is included in both train and test so Task C (bare vs declared-false on X_false) is evaluable. Template disjointness applies to the paired TRUE/FALSE templates.
 
-## Intervention prompts
+## Delta-direction ablation
 
 Build prompts with statement-final token indices:
 ```bash
 python scripts/build_intervention_prompts.py
+```
+
+Compute per-pair stance deltas at the decision site and remove the projection along that delta:
+```bash
+python scripts/run_intervention_delta_ablation.py \
+  --model meta-llama/Llama-3.1-70B-Instruct \
+  --layer last \
+  --delta-mode per-pair \
+  --direction both \
+  --alpha 1.0 \
+  --max-pairs 100
+```
+
+Outputs `dataset/intervention_delta_ablation.jsonl` with per-pair margins and predictions.
+
+## Behavioral eval with direction ablation
+
+Run the standard truth + consequence eval while ablating the stance direction at the statement-final token:
+```bash
+python scripts/run_behavioral_eval_ablation.py \
+  --model meta-llama/Llama-3.1-70B-Instruct \
+  --layer last \
+  --alpha 1.0 \
+  --w dataset/stance_direction.npz
 ```
