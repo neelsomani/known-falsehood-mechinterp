@@ -241,10 +241,18 @@ def main() -> None:
     parser.add_argument("--limit-truth-per-class", type=int, default=None)
     parser.add_argument("--limit-consequence", type=int, default=None)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--out", type=Path, default=None)
     parser.add_argument(
-        "--out",
+        "--out-prompts",
         type=Path,
-        default=None,
+        default=Path("dataset/intervention_prompts.jsonl"),
+        help="Output for non-paired prompts (truth + consequence).",
+    )
+    parser.add_argument(
+        "--out-pairs",
+        type=Path,
+        default=Path("dataset/intervention_pairs.jsonl"),
+        help="Output for paired consequence prompts.",
     )
     args = parser.parse_args()
 
@@ -273,8 +281,9 @@ def main() -> None:
                 args.seed,
             )
         )
+    pair_prompts = []
     if args.task in {"consequence-pairs", "all"}:
-        prompts.extend(
+        pair_prompts.extend(
             build_consequence_pairs(
                 tokenizer,
                 args.system,
@@ -286,22 +295,35 @@ def main() -> None:
             )
         )
 
-    if not prompts:
-        raise ValueError("No prompts generated.")
+    if args.task == "all":
+        if not prompts and not pair_prompts:
+            raise ValueError("No prompts generated.")
+        args.out_prompts.parent.mkdir(parents=True, exist_ok=True)
+        with args.out_prompts.open("w", encoding="utf-8") as f:
+            for row in prompts:
+                f.write(json.dumps(row) + "\n")
+        args.out_pairs.parent.mkdir(parents=True, exist_ok=True)
+        with args.out_pairs.open("w", encoding="utf-8") as f:
+            for row in pair_prompts:
+                f.write(json.dumps(row) + "\n")
+        print(f"Wrote {len(prompts)} prompts to {args.out_prompts}")
+        print(f"Wrote {len(pair_prompts)} pairs to {args.out_pairs}")
+        return
 
     out_path = args.out
     if out_path is None:
-        if args.task in {"consequence-pairs", "all"}:
-            out_path = Path("dataset/intervention_pairs.jsonl")
-        else:
-            out_path = Path("dataset/intervention_prompts.jsonl")
+        out_path = args.out_pairs if args.task == "consequence-pairs" else args.out_prompts
+
+    selected = pair_prompts if args.task == "consequence-pairs" else prompts
+    if not selected:
+        raise ValueError("No prompts generated.")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8") as f:
-        for row in prompts:
+        for row in selected:
             f.write(json.dumps(row) + "\n")
 
-    print(f"Wrote {len(prompts)} prompts to {out_path}")
+    print(f"Wrote {len(selected)} prompts to {out_path}")
 
 
 if __name__ == "__main__":
