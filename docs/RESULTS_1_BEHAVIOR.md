@@ -1,4 +1,4 @@
-# Part 1: Behavioral Characterization (Preliminary Findings)
+# Behavioral Characterization (Preliminary Findings)
 
 As an initial step, we characterize model behavior on two closely related tasks that separate factual truth evaluation from assumption-conditioned reasoning. On a Truth/False/Unknown task involving short geopolitical statements, the model achieves high accuracy (96.5% overall) with zero use of the “Unknown” option. This confirms that, under the current prompt format, the model continues to evaluate bare propositions against its internal world knowledge rather than defaulting to acceptance or assumption-taking. These results establish a stable behavioral baseline and verify that the task setup does not globally bias the model toward treating user-provided statements as true.
 
