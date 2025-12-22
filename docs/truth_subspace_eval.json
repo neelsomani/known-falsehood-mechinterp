@@ -1,0 +1,29 @@
+{
+  "layer": 40,
+  "k": 3,
+  "alpha": 1.0,
+  "delta_pt": "dataset/delta_directions/delta_layer_040.pt",
+  "results": {
+    "baseline": {
+      "true_acc": 0.975,
+      "false_acc": 0.955,
+      "overall_acc": 0.965,
+      "unknown_pct": 0.0,
+      "total": 400
+    },
+    "pca_subspace": {
+      "true_acc": 0.97,
+      "false_acc": 0.975,
+      "overall_acc": 0.9725,
+      "unknown_pct": 0.0,
+      "total": 400
+    },
+    "random_subspace": {
+      "true_acc": 0.975,
+      "false_acc": 0.955,
+      "overall_acc": 0.965,
+      "unknown_pct": 0.0,
+      "total": 400
+    }
+  }
+}

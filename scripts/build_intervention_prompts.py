@@ -13,7 +13,6 @@ from prompt_utils import build_prompt, find_statement_span, spans_to_token_index
 from run_behavioral_eval import (
     build_consequence_rows,
     load_consequences,
-    load_splits,
 )
 
 
@@ -96,10 +95,11 @@ def build_consequence_prompts(
     consequences_path: Path,
     limit_total: int | None,
     seed: int,
+    split: str,
 ) -> list[dict]:
-    train_facts, train_templates = load_splits(splits_path)
+    split_facts, split_templates = load_split(splits_path, split)
     consequences = load_consequences(consequences_path)
-    rows = build_consequence_rows(data_path, train_facts, train_templates, consequences)
+    rows = build_consequence_rows(data_path, split_facts, split_templates, consequences)
     if limit_total is not None:
         rows = rows[:limit_total]
     random.seed(seed)
@@ -136,6 +136,20 @@ def paired_template_id(template_id: str) -> str | None:
     return None
 
 
+def load_split(path: Path, split: str) -> tuple[set[str], set[str]]:
+    with path.open(encoding="utf-8") as f:
+        splits = json.load(f)
+    if split == "all":
+        fact_sets = splits["fact_splits"].values()
+        template_sets = splits["template_splits"].values()
+        facts = set().union(*map(set, fact_sets))
+        templates = set().union(*map(set, template_sets))
+        return facts, templates
+    if split not in splits["fact_splits"] or split not in splits["template_splits"]:
+        raise ValueError(f"Unknown split: {split}")
+    return set(splits["fact_splits"][split]), set(splits["template_splits"][split])
+
+
 def build_consequence_pairs(
     tokenizer,
     system: str,
@@ -144,8 +158,9 @@ def build_consequence_pairs(
     consequences_path: Path,
     limit_total: int | None,
     seed: int,
+    split: str,
 ) -> list[dict]:
-    train_facts, train_templates = load_splits(splits_path)
+    split_facts, split_templates = load_split(splits_path, split)
     consequences = load_consequences(consequences_path)
     rows = []
     with data_path.open(newline="", encoding="utf-8") as f:
@@ -155,7 +170,7 @@ def build_consequence_pairs(
                 continue
             base_fact = row["base_fact"]
             template_id = row["template_id"]
-            if base_fact not in train_facts or template_id not in train_templates:
+            if base_fact not in split_facts or template_id not in split_templates:
                 continue
             rows.append(row)
 
@@ -241,6 +256,12 @@ def main() -> None:
     parser.add_argument("--limit-truth-per-class", type=int, default=None)
     parser.add_argument("--limit-consequence", type=int, default=None)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--split",
+        choices=["train", "test", "all"],
+        default="train",
+        help="Which split to use for consequence prompts/pairs.",
+    )
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument(
         "--out-prompts",
@@ -272,26 +293,28 @@ def main() -> None:
     if args.task in {"consequence", "all"}:
         prompts.extend(
             build_consequence_prompts(
-                tokenizer,
-                args.system,
-                Path(args.splits),
-                Path(args.data),
-                Path(args.consequences),
-                args.limit_consequence,
-                args.seed,
+                tokenizer=tokenizer,
+                system=args.system,
+                splits_path=Path(args.splits),
+                data_path=Path(args.data),
+                consequences_path=Path(args.consequences),
+                limit_total=args.limit_consequence,
+                seed=args.seed,
+                split=args.split,
             )
         )
     pair_prompts = []
     if args.task in {"consequence-pairs", "all"}:
         pair_prompts.extend(
             build_consequence_pairs(
-                tokenizer,
-                args.system,
-                Path(args.splits),
-                Path(args.data),
-                Path(args.consequences),
-                args.limit_consequence,
-                args.seed,
+                tokenizer=tokenizer,
+                system=args.system,
+                splits_path=Path(args.splits),
+                data_path=Path(args.data),
+                consequences_path=Path(args.consequences),
+                limit_total=args.limit_consequence,
+                seed=args.seed,
+                split=args.split,
             )
         )
 
