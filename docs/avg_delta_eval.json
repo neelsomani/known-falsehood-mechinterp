@@ -1,0 +1,49 @@
+{
+  "layer": 40,
+  "alpha": 1.0,
+  "delta_pt": "dataset/delta_directions/delta_layer_040.pt",
+  "results": {
+    "baseline": {
+      "acc": 0.67,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "local_delta": {
+      "acc": 0.5366666666666666,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "mean_delta": {
+      "acc": 0.65,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "random_delta": {
+      "acc": 0.68,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "pca_k1": {
+      "acc": 0.6633333333333333,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "pca_k2": {
+      "acc": 0.5733333333333334,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "pca_k3": {
+      "acc": 0.56,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    }
+  }
+}

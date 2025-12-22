@@ -1,65 +1,3 @@
-# Ablation studies
-
-## Directional ablation results
-
-The previous ablation experiments identified a direction that linearly separates declared-true and declared-false statements at the end of the statement span, but removing this direction did not reliably affect downstream consequence selection. Further analysis showed that perturbations at the statement token did not mediate into the final decision representation, and even aggressive multi-layer ablations at the decision token could be compensated by later computation. This suggests that the stance signal used for consequence selection may not align with a single global probe direction across prompt formats or token positions.
-
-To directly test whether epistemic stance is causally represented at the site that drives the model’s decision, we adopt a pairwise activation-patching approach. For each underlying consequence question, we construct two prompts that are identical except for epistemic stance (declared-true vs. declared-false). We run both prompts and capture the hidden state at a chosen layer and at the final prompt token, which is the representation from which the A/B logits are computed. We then perform a counterfactual intervention by overwriting the hidden state from one stance condition with the hidden state from the other, while keeping the prompt text fixed. If the model’s behavior shifts toward the patched stance, this provides direct causal evidence that the internal representation at that site mediates how epistemic stance influences downstream reasoning.
-
-This approach avoids assumptions about global linear directions or cross-prompt alignment and instead tests the full high-dimensional representation induced by stance under identical conditions. Because the intervention is localized to a specific layer and token position and swaps only the internal state associated with epistemic stance, it constitutes a strong mechanistic test of whether stance is a causal control variable for premise-conditioned inference in the model.
-
-## Behavioral effects of delta-direction ablation
-
-We evaluated the effect of delta-direction ablation on both truth judgments and premise-conditioned consequence reasoning. The intervention removed, at the final decision site (last layer, last prompt token), the projection of the hidden state along the per-pair stance difference
-Δ = h_declared-true − h_declared-false, normalized and applied with α = 1.0.
-
-### Truth task
-
-Performance on the truth classification task was unchanged by the intervention.
-
-Before ablation:
-
-* True accuracy: 0.975 (195/200)
-* False accuracy: 0.955 (191/200)
-* Overall accuracy: 0.965 (386/400)
-* Unknown rate: 0.00%
-
-After ablation:
-
-* True accuracy: 0.975 (195/200)
-* False accuracy: 0.955 (191/200)
-* Overall accuracy: 0.965 (386/400)
-* Unknown rate: 0.00%
-
-Thus, delta-direction ablation does not disrupt the model’s ability to judge factual truth or parse negation in isolation.
-
-### Consequence task
-
-Performance on the premise-conditioned consequence task showed no meaningful degradation under ablation.
-
-Before ablation:
-
-* Overall accuracy: 0.666 (853/1280)
-* Unparsed outputs: 0.00%
-
-After ablation:
-
-* Overall accuracy: 0.662 (848/1280)
-* Unparsed outputs: 0.00%
-
-The difference corresponds to 5 examples out of 1280 and is within noise.
-
-Breakdowns by stance, proposition type, and template family likewise showed only minor fluctuations. No condition exhibited a systematic accuracy collapse following ablation.
-
-### Summary
-
-Delta-direction ablation at the final decision site leaves:
-
-* truth judgment accuracy unchanged
-* consequence-selection accuracy unchanged within noise
-
-This holds despite the fact that the same intervention produces large and systematic shifts in answer logits and margins.
-
 ## Local delta-direction ablation across all layers
 
 For the layer-sweep experiments, we subsample the set of stance pairs to 150 examples rather than using the full dataset (≈600 pairs). Computing per-pair local deltas requires two forward passes per example per layer, making a full sweep prohibitively expensive (on the order of tens of hours). Because the goal of this sweep is to identify whether there exists a layer (or contiguous band of layers) at which removing the stance-conditioned internal difference measurably degrades premise-conditioned reasoning, a smaller but representative subset is sufficient. The intervention is strong and example-specific, so any genuine causal bottleneck should manifest as a clear accuracy drop even at this reduced scale. Once candidate layers are identified, we can rerun targeted experiments at those layers using the full dataset for confirmation.
@@ -199,3 +137,59 @@ Key insight:
 * Some higher-variance components are not stance-critical and may even support correct answers.
 
 Conclusion: The causal stance signal lives in a **small subspace (≈2D)**, but not necessarily aligned with PCA variance ordering.
+
+## Final finding: Uncentered PCA explains it
+
+When we estimate a stance subspace using PCA on mean-centered stance deltas, the resulting components capture only how stance varies across examples, not the global stance shift itself. Ablating the projection of the decision-state hidden vector onto this centered subspace degrades performance but does not fully collapse premise-conditioned reasoning, indicating that removing structured variation alone is insufficient. Empirically, we find that the mean of the stance deltas constitutes an essential part of the causal signal: subtracting only the mean produces a weak effect, subtracting only centered variation produces a stronger but incomplete effect, and subtracting both together produces the largest degradation. This motivates using an uncentered delta subspace, estimated via SVD on the raw (sign-aligned) deltas, which spans both the mean stance direction and its dominant modes of variation.
+
+{
+  "layer": 40,
+  "alpha": 1.0,
+  "delta_pt": "dataset/delta_directions/delta_layer_040.pt",
+  "results": {
+    "baseline": {
+      "acc": 0.67,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "local_delta": {
+      "acc": 0.5366666666666666,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "mean_delta": {
+      "acc": 0.65,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "random_delta": {
+      "acc": 0.68,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "pca_k1": {
+      "acc": 0.6633333333333333,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "pca_k2": {
+      "acc": 0.5733333333333334,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "pca_k3": {
+      "acc": 0.56,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    }
+  }
+}
+
+Projecting the hidden state onto this uncentered stance subspace and subtracting that projection most closely reproduces the effect of per-example local delta ablations, indicating that epistemic stance is implemented as a low-dimensional span consisting of a global bias plus structured contextual modulation, rather than purely as variance around a mean or as a single direction.
