@@ -273,6 +273,12 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated PCA subspace sizes to evaluate.",
     )
     parser.add_argument(
+        "--pca-mode",
+        choices=["centered", "uncentered"],
+        default="centered",
+        help="Use centered PCA or uncentered SVD on aligned deltas.",
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         default=Path("dataset/avg_delta_eval.json"),
@@ -302,12 +308,19 @@ def main() -> None:
     signs = torch.sign(cos_to_mean)
     signs[signs == 0] = 1
     deltas_aligned = deltas_f * signs.unsqueeze(1)
-    q = min(10, deltas_aligned.shape[0] - 1) if deltas_aligned.shape[0] > 1 else 1
-    if q == 1:
-        pca_basis = mean_delta_f.unsqueeze(1)
+    if args.pca_mode == "uncentered":
+        if deltas_aligned.shape[0] == 1:
+            pca_basis = mean_delta_f.unsqueeze(1)
+        else:
+            _, _, Vh = torch.linalg.svd(deltas_aligned, full_matrices=False)
+            pca_basis = Vh[: min(10, Vh.shape[0])].t()
     else:
-        _, _, V = torch.pca_lowrank(deltas_aligned, q=q, center=True)
-        pca_basis = V
+        q = min(10, deltas_aligned.shape[0] - 1) if deltas_aligned.shape[0] > 1 else 1
+        if q == 1:
+            pca_basis = mean_delta_f.unsqueeze(1)
+        else:
+            _, _, V = torch.pca_lowrank(deltas_aligned, q=q, center=True)
+            pca_basis = V
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(

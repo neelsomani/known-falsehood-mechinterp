@@ -137,3 +137,65 @@ That suggests subtracting the mean:
 }
 
 Clearly it's not a 1D representation, though the 1D projection has some effect.
+
+## PCA subspace ablations: stance is low-D but not 1-D
+
+Using PCA-based subspaces at layer 40:
+
+{
+  "layer": 40,
+  "alpha": 1.0,
+  "delta_pt": "dataset/delta_directions/delta_layer_040.pt",
+  "results": {
+    "baseline": {
+      "acc": 0.67,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "local_delta": {
+      "acc": 0.5366666666666666,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "mean_delta": {
+      "acc": 0.65,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "random_delta": {
+      "acc": 0.68,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "pca_k1": {
+      "acc": 0.6766666666666666,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "pca_k2": {
+      "acc": 0.5966666666666667,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    },
+    "pca_k3": {
+      "acc": 0.6633333333333333,
+      "unparsed_pct": 0.0,
+      "skipped_missing_delta": 980,
+      "total": 300
+    }
+  }
+}
+
+Key insight:
+
+* Removing *more* variance does **not** monotonically reduce accuracy.
+* PCA components are ordered by variance, not causal relevance.
+* Some higher-variance components are not stance-critical and may even support correct answers.
+
+Conclusion: The causal stance signal lives in a **small subspace (≈2D)**, but not necessarily aligned with PCA variance ordering.
