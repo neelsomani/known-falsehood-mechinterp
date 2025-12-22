@@ -38,7 +38,7 @@ Critically:
 * World-knowledge correctness is orthogonalized from epistemic stance.
 * Consequence questions are designed so that correct answers depend on how the premise is licensed, not on real-world truth.
 
-This lets us ask whether the model tracks assumed truth value independently of content and knowledge.
+This lets us ask whether the model tracks assumed truth value independently of content and knowledge. We generate the raw `dataset/facts.csv` file (committed to the repo) via the prompts `dataset/FACT_SET_RAW_PROMPT.txt` and `dataset/CONSEQUENCE_TEST.txt`.
 
 1) Build the derived dataset files from the wide facts CSV:
    ```bash
@@ -51,7 +51,7 @@ This lets us ask whether the model tracks assumed truth value independently of c
    python scripts/run_behavioral_eval.py --model meta-llama/Llama-3.1-70B-Instruct
    ```
    Use `--limit-truth-per-class` or `--limit-consequence` to sample fewer items, and `--show-prompts` to print prompts and outputs as they run.
-   `scripts/build_train_consequence_questions.py` and `scripts/llama_interactive.py` are a debugging utilities and do not need to be run.
+   `scripts/llama_interactive.py` is a debugging utility and does not need to be run.
 
 The evaluation shows that the model can distinguish between raw, declared-true, and declared-false. The evaluation will be run again after the intervention.
 
@@ -75,7 +75,7 @@ We record residual stream activations at multiple layers and token positions and
    ```bash
    python scripts/run_probes.py
    ```
-   Outputs `dataset/probe_aurocs.csv` with AUROC by task, layer, and position. Note: the bare condition (T_BARE) is included in both train and test so Task C (bare vs declared-false on X_false) is evaluable. Template disjointness applies to the paired TRUE/FALSE templates.
+   Outputs `dataset/probe_aurocs.csv` with AUROC by task, layer, and position. We commit our results to `docs/probe_aurocs.csv`. Note: the bare condition (T_BARE) is included in both train and test so Task C (bare vs declared-false on X_false) is evaluable. Template disjointness applies to the paired TRUE/FALSE templates.
 
 ### Findings
 
@@ -161,7 +161,7 @@ python scripts/run_layerwise_delta_eval.py \
   --max-pairs 150
 ```
 
-We subsample stance pairs during the sweep to make full-layer evaluation tractable. The goal is to localize the causal layer band, after which selected layers can be rerun with more pairs. This writes per-layer deltas to `dataset/delta_directions/` and per-layer eval results to `dataset/layerwise_delta_eval.jsonl`. In our runs, the largest drop appeared around layer 40.
+We subsample stance pairs during the sweep to make full-layer evaluation tractable. The goal is to localize the causal layer band, after which selected layers can be rerun with more pairs. This writes per-layer deltas to `dataset/delta_directions/` and per-layer eval results to `dataset/layerwise_delta_eval.jsonl`. We commit our results to `docs/layerwise_delta_eval.jsonl`. In our runs, the largest drop appeared around layer 40.
 
 ### Findings
 
@@ -191,7 +191,7 @@ python scripts/run_avg_delta_eval.py \
   --pca-mode uncentered
 ```
 
-This writes a JSON summary to `dataset/avg_delta_eval.json`. At layer 40, ablating a 2-3 dimensional subspace estimated from aligned stance deltas substantially reduces consequence accuracy (approaching the effect of per-example local delta ablation), whereas a single global direction (mean or top-1 component) has a much weaker effect. Random directions do not have any impact.
+This writes a JSON summary to `dataset/avg_delta_eval.json`. We commit our results at `docs/avg_delta_eval.json`. At layer 40, ablating a 2-3 dimensional subspace estimated from aligned stance deltas substantially reduces consequence accuracy (approaching the effect of per-example local delta ablation), whereas a single global direction (mean or top-1 component) has a much weaker effect. Random directions do not have any impact.
 
 Findings:
 
@@ -230,7 +230,7 @@ python scripts/run_truth_subspace_eval.py
    --seed 0
 ```
 
-For the chosen ablation that subtracts the projection against the PCA-3 delta direction subspace:
+Our results are available in `docs/truth_subspace_eval.json`. For the chosen ablation that subtracts the projection against the PCA-3 delta direction subspace:
 
 * Output formatting remains intact (A/B and True/False parsing rates unchanged).
 * Truth judgments are unchanged under the same global stance-subspace ablation.
